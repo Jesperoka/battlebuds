@@ -1,5 +1,5 @@
 # battlebuds
-Learning Zig, libDRM and HID controller interfacing by making a game.
+Learning Zig, libdrm and HID controller interfacing by making a game.
 
 This is for educational purposes for the forseeable future.
 
@@ -15,6 +15,7 @@ Linux J 5.15.153.1-microsoft-standard-WSL2 #1 SMP Fri Mar 29 23:14:13 UTC 2024 x
 
 Functionality: 
 
+- [X] Figure out Zig build system.
 - [ ] Draw anything to a buffer with libdrm.
 - [ ] Read input from controller.
 - [ ] Create a loop to move some shape based on controller input.
@@ -29,7 +30,7 @@ Performance:
 
 - [ ] Investigate Zig vectors with automatic SIMD.
 - [ ] Threading.
-- [ ] (?) Hardware acceleration (excuse to learn CUDA).
+- [ ] (?) Hardware acceleration (excuse to learn CUDA, look into [GEM/libgbm](https://manpages.debian.org/unstable/libdrm-dev/drm-memory.7.en.html)).
 
 Art: 
 
@@ -39,3 +40,8 @@ Art:
 - [ ] (.) Animation switch on charater mode.
 - [ ] (?) Fancy 3D/2.5D background or something, game will still be 2D.
 
+
+# Dependencies:
+- Zig
+- libdrm (if missing: `sudo apt install mesa-common-dev libglu1-mesa-dev`)
+- libc
