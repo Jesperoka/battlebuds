@@ -1,106 +1,233 @@
-// Keeping everything in main until it becomes too big.
 const std = @import("std");
-const c_libdrm = @cImport(@cInclude("xf86drm.h"));
-const c_drmmode = @cImport(@cInclude("xf86drmMode.h"));
-// const c_math = @cImport(@cInclude("math.h"));
-const c_fcntl = @cImport(@cInclude("fcntl.h"));
-const c_inttypes = @cImport(@cInclude("inttypes.h"));
-const c_stdio = @cImport(@cInclude("stdio.h"));
-const c_unistd = @cImport(@cInclude("unistd.h"));
+const xcb = @cImport(@cInclude("xcb/xcb.h"));
 
-// Convenience print
-fn print(arg: anytype) void {
-    switch (@typeInfo(@TypeOf(arg))) {
-        .Float, .ComptimeFloat, .Int, .ComptimeInt => std.debug.print("\n{d}\n", .{arg}),
-        else => std.debug.print("\n{any}\n", .{arg}),
+const Point = struct {
+    x: i16 = undefined,
+    y: i16 = undefined,
+};
+const line_start = Point{};
+const line_end = Point{};
+
+const xcb_screen_t = extern struct {
+    root: u32,
+    default_colormap: u32,
+    white_pixel: u32,
+    black_pixel: u32,
+    current_input_masks: u32,
+    width_in_pixels: u16,
+    height_in_pixels: u16,
+    width_in_millimeters: u16,
+    height_in_millimeters: u16,
+    min_installed_maps: u16,
+    max_installed_maps: u16,
+    root_visual: u32,
+    backing_stores: u8,
+    save_unders: u8,
+    root_depth: u8,
+    allowed_depths_len: u8,
+};
+
+const xcb_void_cookie_t = extern struct {
+    sequence: u32, // Sequence number
+};
+
+const xcb_rectangle_t = extern struct {
+    x: i16,
+    y: i16,
+    width: u16,
+    height: u16,
+};
+
+fn create_window(conn: anytype, screen: *xcb_screen_t) struct { u32, u32, u32, u32 } {
+    var mask: u32 = xcb.XCB_GC_BACKGROUND | xcb.XCB_GC_GRAPHICS_EXPOSURES;
+
+    var values: *[2]u32 = @constCast(&[2]u32{ screen.black_pixel, 0 });
+    const foreground: u32 = xcb.xcb_generate_id(conn);
+    var cookie: *const xcb_void_cookie_t = @ptrCast(&xcb.xcb_create_gc(conn, foreground, screen.root, mask, values));
+    std.debug.print("\nGC context cookie: {any}\n", .{cookie.*});
+
+    const pid: u32 = xcb.xcb_generate_id(conn);
+    cookie = @ptrCast(&xcb.xcb_create_pixmap(conn, screen.root_depth, pid, screen.root, 500, 500));
+    std.debug.print("\nPixmap cookie: {any}\n", .{cookie.*});
+
+    const fill: u32 = xcb.xcb_generate_id(conn);
+    mask = xcb.XCB_GC_FOREGROUND | xcb.XCB_GC_BACKGROUND;
+    values = @constCast(&.{ screen.white_pixel, screen.white_pixel });
+    cookie = @ptrCast(&xcb.xcb_create_gc(conn, fill, pid, mask, values));
+    std.debug.print("\nGC context cookie: {any}\n", .{cookie.*});
+
+    const win: u32 = xcb.xcb_generate_id(conn);
+    mask = xcb.XCB_CW_BACK_PIXMAP | xcb.XCB_CW_EVENT_MASK;
+
+    values = @constCast(&.{ pid, xcb.XCB_EVENT_MASK_EXPOSURE | xcb.XCB_EVENT_MASK_BUTTON_PRESS |
+        xcb.XCB_EVENT_MASK_BUTTON_RELEASE | xcb.XCB_EVENT_MASK_BUTTON_MOTION |
+        xcb.XCB_EVENT_MASK_KEY_PRESS | xcb.XCB_EVENT_MASK_KEY_RELEASE });
+
+    cookie = @ptrCast(&xcb.xcb_create_window(conn, screen.root_depth, win, screen.root, 0, 0, 150, 150, 10, xcb.XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, mask, values));
+    std.debug.print("\nCreate window cookie: {any}\n", .{cookie.*});
+
+    cookie = @ptrCast(&xcb.xcb_map_window(conn, win));
+    std.debug.print("\nMap window: {any}\n", .{cookie.*});
+
+    const xcb_rect: *const xcb.xcb_rectangle_t = @ptrCast(&xcb_rectangle_t{ .x = 0, .y = 0, .width = 500, .height = 500 });
+    cookie = @ptrCast(&xcb.xcb_poly_fill_rectangle(conn, pid, fill, 1, xcb_rect));
+
+    return .{ win, pid, foreground, fill };
+}
+
+fn xcb_check_connection_error(conn: anytype) u8 {
+    switch (xcb.xcb_connection_has_error(conn)) {
+        0 => return 0,
+        xcb.XCB_CONN_ERROR => {
+            std.debug.print("\n{s}\n", .{"XCB_CONN_ERROR, because of socket errors, pipe errors or other stream errors."});
+            return xcb.XCB_CONN_ERROR;
+        },
+        xcb.XCB_CONN_CLOSED_EXT_NOTSUPPORTED => {
+            std.debug.print("\n{s}\n", .{"XCB_CONN_CLOSED_EXT_NOTSUPPORTED, extension not supported"});
+            return xcb.XCB_CONN_CLOSED_EXT_NOTSUPPORTED;
+        },
+        xcb.XCB_CONN_CLOSED_MEM_INSUFFICIENT => {
+            std.debug.print("\n{s}\n", .{"XCB_CONN_CLOSED_MEM_INSUFFICIENT, insufficient memory."});
+            return xcb.XCB_CONN_CLOSED_MEM_INSUFFICIENT;
+        },
+        xcb.XCB_CONN_CLOSED_REQ_LEN_EXCEED => {
+            std.debug.print("\n{s}\n", .{"XCB_CONN_CLOSED_REQ_LEN_EXCEED, exceeding request length that server accepts."});
+            return xcb.XCB_CONN_CLOSED_REQ_LEN_EXCEED;
+        },
+        xcb.XCB_CONN_CLOSED_PARSE_ERR => {
+            std.debug.print("\n{s}\n", .{"XCB_CONN_CLOSED_PARSE_ERR, error during parsing display string."});
+            return xcb.XCB_CONN_CLOSED_PARSE_ERR;
+        },
+        xcb.XCB_CONN_CLOSED_INVALID_SCREEN => {
+            std.debug.print("\n{s}\n", .{"XCB_CONN_CLOSED_INVALID_SCREEN, server does not have a screen matching the display."});
+            return xcb.XCB_CONN_CLOSED_INVALID_SCREEN;
+        },
+        else => unreachable,
     }
 }
 
-// Some resources for drm:
-// - https://github.com/ascent12/drm_doc
-// - https://github.com/dvdhrm/docs/tree/master/drm-howto
-// - https://github.com/rdkcentral/rdk-halif-libdrm
-// - https://manpages.debian.org/unstable/libdrm-dev/drm.7.en.html
-// - https://manpages.debian.org/unstable/libdrm-dev/drm-memory.7.en.html
-// - https://www.youtube.com/watch?v=haes4_Xnc5Q
-// - https://www.baeldung.com/linux/gui#drm-and-dri
-// - https://gist.github.com/uobikiemukot/c2be4d7515e977fd9e85
-// - https://williamaadams.wordpress.com/2015/09/26/spelunking-linux-drawing-on-libdrm/
-// - https://sources.debian.org/src/libdrm/2.4.97-1/xf86drmMode.h/
-// - https://medium.com/@lei.wang.sg/render-graphics-with-drm-on-linux-5ce35a932f83
-// - https://ignitarium.com/3d-graphics-driver-for-linux-drm-implementation/
-// - https://dri.freedesktop.org/docs/drm/gpu/drm-uapi.html
-//
-// NVIDIA and libdrm:
-// - https://download.nvidia.com/XFree86/Linux-x86_64/396.51/README/kms.html
+const xcb_generic_event_t = extern struct {
+    response_type: u8, // Type of the response
+    pad0: u8, // Padding
+    sequence: u16, // Sequence number
+    pad: [7]u32, // Padding
+    full_sequence: u32, // Full sequence
+};
 
-const gpu_path = "/dev/dri/card0"; // hardcoded for now
+fn parse_event(xcb_event: *const xcb_generic_event_t) i32 {
+    return xcb_event.response_type & ~@as(i32, 0x80);
+}
 
-fn conn_str(conn_type: u32) []const u8 {
-    switch (conn_type) {
-        c_libdrm.DRM_MODE_CONNECTOR_Unknown => return "Unknown",
-        c_libdrm.DRM_MODE_CONNECTOR_VGA => return "VGA",
-        c_libdrm.DRM_MODE_CONNECTOR_DVII => return "DVI-I",
-        c_libdrm.DRM_MODE_CONNECTOR_DVID => return "DVI-D",
-        c_libdrm.DRM_MODE_CONNECTOR_DVIA => return "DVI-A",
-        c_libdrm.DRM_MODE_CONNECTOR_Composite => return "Composite",
-        c_libdrm.DRM_MODE_CONNECTOR_SVIDEO => return "SVIDEO",
-        c_libdrm.DRM_MODE_CONNECTOR_LVDS => return "LVDS",
-        c_libdrm.DRM_MODE_CONNECTOR_Component => return "Component",
-        c_libdrm.DRM_MODE_CONNECTOR_9PinDIN => return "DIN",
-        c_libdrm.DRM_MODE_CONNECTOR_DisplayPort => return "DP",
-        c_libdrm.DRM_MODE_CONNECTOR_HDMIA => return "HDMI-A",
-        c_libdrm.DRM_MODE_CONNECTOR_HDMIB => return "HDMI-B",
-        c_libdrm.DRM_MODE_CONNECTOR_TV => return "TV",
-        c_libdrm.DRM_MODE_CONNECTOR_eDP => return "eDP",
-        c_libdrm.DRM_MODE_CONNECTOR_VIRTUAL => return "Virtual",
-        c_libdrm.DRM_MODE_CONNECTOR_DSI => return "DSI",
-        else => return "Unknown",
+fn on_key_press(conn: anytype, win: u32, pid: u32, fill: u32) void {
+    const x, const y, const width, const height = .{ 0, 0, 500, 500 };
+    const xcb_rect: *const xcb.xcb_rectangle_t = @ptrCast(&xcb_rectangle_t{ .x = x, .y = y, .width = width, .height = height });
+    _ = xcb.xcb_poly_fill_rectangle_checked(conn, pid, fill, 1, xcb_rect);
+    _ = xcb.xcb_clear_area(conn, 1, win, x, y, width, height);
+}
+
+fn event_loop(conn: anytype, win: u32, pid: u32, _: u32, fill: u32) void {
+    var i: usize = 0;
+    while (i < 100) : (i += 1) {
+        const xcb_event: *const xcb_generic_event_t = @ptrCast(&xcb.xcb_wait_for_event(conn));
+        std.debug.print("\nevent type: {any}", .{parse_event(xcb_event)});
+
+        switch (parse_event(xcb_event)) {
+            xcb.XCB_KEY_PRESS => on_key_press(conn, win, pid, fill),
+            else => {},
+        }
+        _ = xcb.xcb_flush(conn);
     }
 }
 
-fn refresh_rate(mode: *c_drmmode.drmModeModeInfo) u32 {
+// void event_loop() {
+//   xcb_generic_event_t *e;
+//   while ((e = xcb_wait_for_event(c))) {
+//     switch (e->response_type & ~0x80) {
 
-    // int res = (mode->clock * 1000000LL / mode->htotal + mode->vtotal / 2) / mode->vtotal;
-    //
-    // print(@TypeOf(mode.vtotal));
+//     case XCB_KEY_PRESS: {
+//       /* fill pixmap with white */
+//       /* why isn't this happening */
+//       xcb_poly_fill_rectangle_checked(c, pid, fill, 1,
+//                                       (xcb_rectangle_t[]){{0, 0, 500, 500}});
 
-    var res: u32 = (@divTrunc(mode.clock * 1000000, mode.htotal) + @divTrunc(mode.vtotal, 2)) / mode.vtotal;
+//       /* clear win to reveal pixmap */
+//       xcb_clear_area(c, 1, win, 0, 0, 500, 500);
 
-    if (mode.flags & c_libdrm.DRM_MODE_FLAG_INTERLACE != 0) {
-        res *= 2;
-    }
-    if (mode.flags & c_libdrm.DRM_MODE_FLAG_DBLSCAN != 0) {
-        res /= 2;
-    }
-    if (mode.vscan > 1) {
-        res /= mode.vscan;
-    }
+//       xcb_flush(c);
+//       break;
+//     }
 
-    return res;
-}
+//     case XCB_MOTION_NOTIFY: {
+//       xcb_motion_notify_event_t *ev = (xcb_motion_notify_event_t *)e;
+
+//       /*
+//         1. clear the area on the win between line_start and mouse_pos (or whole
+//         win)
+//         2. update mouse_pos
+//         3. draw line from line_start to mouse_pos
+//       */
+//       xcb_clear_area(c, 1, win, 0, 0, 500, 500);
+//       xcb_point_t mouse_pos = {(ev->event_x - line_start.x),
+//                                (ev->event_y - line_start.y)};
+//       xcb_point_t points[] = {line_start, mouse_pos};
+//       xcb_poly_line(c, XCB_COORD_MODE_PREVIOUS, win, foreground, 2, points);
+
+//       xcb_flush(c);
+//       break;
+//     }
+
+//     case XCB_BUTTON_PRESS: {
+//       xcb_button_press_event_t *ev = (xcb_button_press_event_t *)e;
+//       line_start = (xcb_point_t){ev->event_x, ev->event_y};
+//       xcb_flush(c);
+//       break;
+//     }
+
+//     case XCB_BUTTON_RELEASE: {
+//       xcb_button_release_event_t *ev = (xcb_button_release_event_t *)e;
+
+//       line_end = (xcb_point_t){(ev->event_x - line_start.x),
+//                                (ev->event_y - line_start.y)};
+
+//       xcb_point_t points[] = {line_start, line_end};
+//       xcb_poly_line(c, XCB_COORD_MODE_PREVIOUS, pid, foreground, 2, points);
+//       xcb_poly_line(c, XCB_COORD_MODE_PREVIOUS, win, foreground, 2, points);
+
+//       xcb_flush(c);
+//       break;
+//     }
+//     case XCB_EXPOSE: {
+
+//       xcb_flush(c);
+//       break;
+//     }
+//     default: {
+//       break;
+//     }
+//     }
+//     free(e);
+//   }
+// }
 
 pub fn main() !void {
-    const drm_file_descriptor: c_int = c_fcntl.open(gpu_path, c_fcntl.O_RDWR | c_fcntl.O_NONBLOCK);
-    const errno: c_int = c_unistd.close(drm_file_descriptor);
-    print(errno);
-    print(drm_file_descriptor);
-    // const drm_file_descriptor: c_int = 0;
+    std.debug.print("{s}", .{"Program Start\n"});
 
-    const resource: c_drmmode.drmModeResPtr = c_drmmode.drmModeGetResources(drm_file_descriptor) orelse std.debug.panic("{s}", .{"\nERROR: drmModeGetResources() returned NULL \n"});
+    const conn = xcb.xcb_connect(null, null);
+    defer xcb.xcb_disconnect(conn);
+    _ = xcb_check_connection_error(conn);
 
-    defer c_drmmode.drmModeFreeResources(resource);
+    const screen: *xcb_screen_t = @ptrCast(xcb.xcb_setup_roots_iterator(xcb.xcb_get_setup(conn)).data);
+    const win: u32, const pid: u32, const foreground: u32, const fill: u32 = create_window(conn, screen);
+    _ = xcb.xcb_flush(conn);
+    event_loop(conn, win, pid, foreground, fill);
 
-    print(resource.*.count_connectors);
-    for (0..@intCast(resource.*.count_connectors)) |conn_idx| {
-        const connector: c_drmmode.drmModeConnectorPtr = c_drmmode.drmModeGetConnector(drm_file_descriptor, resource.*.connectors[conn_idx]).?;
-        defer c_drmmode.drmModeFreeConnector(connector);
+    // const c_screen = xcb.xcb_setup_roots_iterator(xcb.xcb_get_setup(conn)).data;
+    // std.debug.print("{any}", .{c_screen[0]});
 
-        std.debug.print("{d}:{s}", .{ conn_idx, conn_str(connector.*.connector_type) });
+    // std.debug.print("{any}", .{screen.root_visual});
 
-        for (0..@intCast(connector.*.count_modes)) |mode_idx| {
-            const mode: c_drmmode.drmModeModeInfoPtr = &(connector.*.modes[mode_idx]);
-            std.debug.print("{d}:{d}", .{ mode_idx, refresh_rate(mode.?) });
-        }
-    }
+    std.debug.print("\n{any}", .{conn});
+    std.debug.print("\n{any}", .{@TypeOf(screen)});
+
+    std.debug.print("{s}", .{"\nProgram End\n"});
 }
