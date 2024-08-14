@@ -13,10 +13,10 @@ pub fn build(b: *std.Build) void {
 
     // link libraries
     exe.linkSystemLibrary("c");
-    exe.linkSystemLibrary("libdrm");
-    exe.addCSourceFile(.{ .file = b.path("src/libdrm_example.c"), .flags = &[_][]const u8{"-std=c11"} });
+    exe.linkSystemLibrary("xcb");
+    // exe.linkSystemLibrary("x11");
+    // exe.addCSourceFile(.{ .file = b.path("src/xcb_example2.c"), .flags = &[_][]const u8{"-std=c11"} });
     exe.addIncludePath(b.path("src/"));
-
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
