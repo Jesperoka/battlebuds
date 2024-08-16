@@ -4,10 +4,11 @@ const xcb = @cImport({
     // @cInclude("xcb/xproto.h");
 });
 
-// quick print
 fn print(arg: anytype) void {
     std.debug.print("\n{any}\n", .{arg});
 }
+const assert = std.debug.assert;
+const dump_trace = std.debug.dumpCurrentStackTrace;
 
 const Point = struct {
     x: i16 = undefined,
@@ -93,8 +94,7 @@ fn on_key_press(xcb_event: *xcb.xcb_generic_event_t, conn: anytype, wid: u32, _:
     const NUM_RECT = 1;
     const xcb_rect = xcb.xcb_rectangle_t{ .x = x, .y = y, .width = width, .height = height };
 
-    // TODO: how do I draw anything?
-    _ = xcb.xcb_clear_area(conn, 1, wid, x, y, width, height);
+    // _ = xcb.xcb_clear_area(conn, 1, wid, x, y, width, height);
     _ = xcb.xcb_poly_fill_rectangle(conn, wid, gid, NUM_RECT, &xcb_rect);
 
     switch (parse_key_press_event(xcb_event)) {
@@ -158,27 +158,25 @@ pub fn main() !void {
 
     const conn = xcb.xcb_connect(null, null);
     defer xcb.xcb_disconnect(conn);
-    const err1 = xcb_check_connection_error(conn);
+    assert(xcb_check_connection_error(conn) == 0);
 
     const screen: *xcb.xcb_screen_t = xcb.xcb_setup_roots_iterator(xcb.xcb_get_setup(conn)).data;
     const wid: window_id, _ = create_window(conn, screen, 0, 0, 1920, 1080, 0);
     cookie = xcb.xcb_map_window(conn, wid);
-    const err2 = xcb.xcb_flush(conn);
-
     print(cookie);
-    print(err1);
-    print(err2);
+    assert(xcb.xcb_flush(conn) > 0);
 
     const gid: gctx_id, _ = create_graphics_context(conn, screen, wid);
-    defer _ = xcb.xcb_free_gc(conn, gid);
+    defer print(xcb.xcb_free_gc(conn, gid));
 
     const pid: pixmap_id, _ = create_pixmap(conn, wid, 200, 200);
-    const gid_2: gctx_id, _ = create_graphics_context(conn, screen, pid);
     defer _ = xcb.xcb_free_pixmap(conn, pid);
+
+    // const gid_2: gctx_id, _ = create_graphics_context(conn, screen, pid);
 
     _ = xcb.xcb_flush(conn);
 
-    event_loop(conn, wid, gid_2, pid);
+    event_loop(conn, wid, gid, pid);
 
     std.debug.print("{s}", .{"\nProgram End\n"});
 }
