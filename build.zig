@@ -14,9 +14,11 @@ pub fn build(b: *std.Build) void {
     // link libraries
     exe.linkSystemLibrary("c");
     exe.linkSystemLibrary("xcb");
+    // exe.linkSystemLibrary("xcb-image");
     // exe.linkSystemLibrary("x11");
     // exe.addCSourceFile(.{ .file = b.path("src/xcb_example2.c"), .flags = &[_][]const u8{"-std=c11"} });
     exe.addIncludePath(b.path("src/"));
+    exe.addIncludePath(b.path("assets/"));
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
