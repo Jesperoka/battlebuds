@@ -25,7 +25,7 @@ pub fn temp() void {
 }
 
 // just testing some stuff
-pub var first_guy: [44][*c]u8 = [44][*c]u8{
+pub var first_guy: *const ([44][*c]u8) = &[44][*c]u8{
     @constCast("20 20 23 1 "),
     @constCast("  c None"),
     @constCast(". c black"),
