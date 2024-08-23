@@ -60,8 +60,20 @@ Basically I'm writing an X11 application, but I will not be using any premade gr
 XCB for window management and sending requests to draw my pixels (which I will write other code to do).
 The point is the excercise of it all.
 
+### MIT-SHM
+As far as I can tell, using the shared memory extension will not work on WSL2.
+https://www.x.org/releases/current/doc/xextproto/shm.html
+Concluded this after running:
+```sh
+xdpyinfo -ext MIT-SHM
+```
+to get information about the Shm XCB extension. Haven't actually tried though.
+    
+
+
 # Dependencies:
 - Zig
 - libc
-- XCB 
+- libxcb 
+- libxcb-image `sudo apt install libxcb-image0-dev`
 ~~- libdrm (if missing: `sudo apt install mesa-common-dev libglu1-mesa-dev`)~~
