@@ -15,10 +15,11 @@ Linux J 5.15.153.1-microsoft-standard-WSL2 #1 SMP Fri Mar 29 23:14:13 UTC 2024 x
 
 Functionality: 
 
-- [X] Figure out Zig build system.
+- [X] Figure out basics of Zig build system.
 - ~~[ ] Draw anything to a buffer with libdrm.~~
-- [X] Draw anything to a window using XCB.
-- [ ] Draw colors with XCB.
+- ~~[X] Draw anything to a window using XCB.~~
+- ~~[ ] Draw pixmaps with XCB.~~
+- [X] Draw anything with SDL2.
 - [ ] Read input from controller (libudev?).
 - [ ] Create a loop to move some shape based on controller input.
 - [ ] Move multiple (displayed) objects at once.
@@ -68,12 +69,23 @@ Concluded this after running:
 xdpyinfo -ext MIT-SHM
 ```
 to get information about the Shm XCB extension. Haven't actually tried though.
-    
+
+### XCB and SDL2
+After struggling with XCB for a while, I am moving on to using SDL2. XCB documentation is a bit lacking in some areas, 
+and I was not able to find good enough examples for pixmap drawing, mostly running into issues of formatting the data
+buffer correctly. I ended up trying the XCB extension xcb_image.h, but even with the helper functions it provides the
+pixmap format did not seem to be correct. The specific documentation on drawing pixmaps is missing from the XCB documentation.
+I could only find people drawing bitmaps, or using other image formats. A considerable amount of trouble also came from
+the C Zig interop, which I am still learning. It's not as easy as some would suggest to get the correct types at the 
+current time, especially when there are opaque types and such. Thus, I am switching to using a Zig binding for SDL2,
+since I am getting a bit bored of difficult C interop without enough documentation for my current knowledge level.
+I the process I did watch this talk: [How to Use Abstraction to Kill Your API - J. Marler](https://www.youtube.com/watch?v=aPWFLkHRIAQ),
+so I might take a look at [ZigX](https://github.com/marler8997/zigx) in the future. But for now [SDL2](https://github.com/ikskuh/SDL.zig).
+
 
 
 # Dependencies:
-- Zig
-- libc
-- libxcb 
-- libxcb-image `sudo apt install libxcb-image0-dev`
-~~- libdrm (if missing: `sudo apt install mesa-common-dev libglu1-mesa-dev`)~~
+- Zig (using 0.14.0)
+- ~~libxcb~~
+- ~~libxcb-image `sudo apt install libxcb-image0-dev`~~
+- ~~libdrm (if missing: `sudo apt install mesa-common-dev libglu1-mesa-dev`)~~
