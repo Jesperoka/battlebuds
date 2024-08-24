@@ -13,7 +13,8 @@ pub fn build(b: *std.Build) void {
     });
 
     // link libraries
-    // exe.linkSystemLibrary("c");
+    exe.linkSystemLibrary("c");
+    exe.linkSystemLibrary("png");
 
     // exe.addIncludePath(b.path("src/"));
 
