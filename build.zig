@@ -1,4 +1,5 @@
 const std = @import("std");
+const sdl = @import("sdl");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -12,12 +13,19 @@ pub fn build(b: *std.Build) void {
     });
 
     // link libraries
-    exe.linkSystemLibrary("c");
-    exe.linkSystemLibrary("xcb-image");
-    exe.linkSystemLibrary("xcb");
+    // exe.linkSystemLibrary("c");
 
     // exe.addIncludePath(b.path("src/"));
-    exe.addIncludePath(b.path("assets/"));
+
+    // Create a new instance of the SDL2 Sdk. Specifiy dependency name explicitly if necessary (use sdl by default) /
+    const sdk = sdl.init(b, .{});
+
+    // link SDL2 as a shared library
+    sdk.link(exe, .dynamic, sdl.Library.SDL2);
+
+    // Add "sdl2" package that exposes the SDL2 api (like SDL_Init or SDL_CreateWindow)
+    exe.root_module.addImport("sdl2", sdk.getNativeModule());
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
