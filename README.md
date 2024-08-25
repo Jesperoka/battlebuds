@@ -20,6 +20,7 @@ Functionality:
 - ~~[X] Draw anything to a window using XCB.~~
 - ~~[ ] Draw pixmaps with XCB.~~
 - [X] Draw anything with SDL2.
+- [X] Correctly draw a texture to screen.
 - [ ] Read input from controller (libudev?).
 - [ ] Create a loop to move some shape based on controller input.
 - [ ] Move multiple (displayed) objects at once.
@@ -86,6 +87,7 @@ so I might take a look at [ZigX](https://github.com/marler8997/zigx) in the futu
 
 # Dependencies:
 - Zig (using 0.14.0)
+- SDL2
 - ~~libxcb~~
 - ~~libxcb-image `sudo apt install libxcb-image0-dev`~~
 - ~~libdrm (if missing: `sudo apt install mesa-common-dev libglu1-mesa-dev`)~~

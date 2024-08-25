@@ -1,10 +1,10 @@
 const std = @import("std");
-const SDL = @import("sdl2"); // Add this package by using sdk.getNativeModule
+const SDL = @import("sdl2");
 const png = @cImport(@cInclude("png.h"));
 const c = @cImport({
     @cInclude("stdlib.h");
-    // @cInclude("stdio.h");
     @cInclude("string.h");
+    // @cInclude("stdio.h");
 });
 
 const assert = std.debug.assert;
@@ -16,25 +16,18 @@ fn strprint(str: []const u8) void {
     std.debug.print("{s}", .{str});
 }
 
-// Needed because png.PNG_IMAGE_SIZE macro was not getting translated in a compatible way.
-// Made by running translate-c on the expanded macro in separate file.
-fn image_size(arg_image: png.png_image) c_ulong {
-    var image = arg_image;
-    _ = &image; // TODO: delete these when I'm certain they aren't needed
-    var size: c_ulong = @as(c_ulong, @bitCast(@as(c_ulong, ((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 4)) >> @intCast(2)) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.height))) *% ((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else (@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.width))))));
-    _ = &size; // TODO: delete these when I'm certain they aren't needed
-
-    return size;
+// Translated expanded C macros from libpng
+//-----------------------------------------
+fn image_size(image: png.png_image) c_ulong {
+    return @as(c_ulong, @bitCast(@as(c_ulong, ((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 4)) >> @intCast(2)) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.height))) *% ((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else (@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.width))))));
 }
-
-fn image_row_stride(arg_image: png.png_image) c_int {
-    var image = arg_image;
-    _ = &image; // TODO: delete these when I'm certain they aren't needed
-    var stride: c_int = @as(c_int, @bitCast((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else (@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.width))));
-    _ = &stride; // TODO: delete these when I'm certain they aren't needed
-
-    return stride;
+fn image_row_stride(image: png.png_image) c_int {
+    return @as(c_int, @bitCast((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else (@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.width))));
 }
+fn image_pixel_size(image: png.png_image) c_int {
+    return @as(c_int, @bitCast(if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else ((@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% (((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 4)) >> @intCast(2)) +% @as(c_uint, @bitCast(@as(c_int, 1))))));
+}
+//-----------------------------------------
 
 const ReadError = error{ OutOfMemory, FailedImageRead };
 
@@ -43,11 +36,10 @@ const Image = struct {
     width: c_int = undefined,
     height: c_int = undefined,
     stride: c_int = undefined,
-    // TODO: const depth: c_ulong = undefined
+    bit_depth: c_int = undefined,
 };
 
-// Based on example.c from libpng
-// ALLOCATES!
+// Based on example.c from libpng. Note: calls malloc
 fn read_png(path: [*:0]const u8, format: c_uint) ReadError!Image {
     var img: png.png_image = undefined;
     _ = c.memset(&img, 0, @sizeOf(png.png_image));
@@ -55,18 +47,18 @@ fn read_png(path: [*:0]const u8, format: c_uint) ReadError!Image {
 
     if (png.png_image_begin_read_from_file(&img, path) != 0) {
         img.format = format;
-
         const buf = c.malloc(image_size(img));
-        // defer if (buf) |b| c.free(b); // this was dumb of me, keeping for future reference of what not to do
 
         if (buf == null) {
             png.png_image_free(&img);
             return ReadError.OutOfMemory;
         }
         if (png.png_image_finish_read(&img, null, buf, 0, null) != 0) {
-            print(image_size(img));
+            const pixel_size = image_pixel_size(img);
             const stride = image_row_stride(img);
-            return Image{ .buffer = buf.?, .width = @intCast(img.width), .height = @intCast(img.height), .stride = stride };
+            return Image{ .buffer = buf.?, .width = @intCast(img.width), .height = @intCast(img.height), .stride = stride, .bit_depth = 8 * pixel_size };
+        } else {
+            c.free(buf); // Buffer was allocated, but image read failed.
         }
     }
     std.debug.print("Error message from libpng: {s}", .{img.message});
@@ -109,7 +101,7 @@ const CharacterPositions = struct {
 };
 
 pub fn main() !void {
-    const image: Image = try read_png("assets/first_guy_big.png", png.PNG_FORMAT_BGRA);
+    const image: Image = try read_png("assets/first_guy_big.png", png.PNG_FORMAT_RGBA);
 
     if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO) < 0)
         sdlPanic();
@@ -128,26 +120,56 @@ pub fn main() !void {
     const renderer = SDL.SDL_CreateRenderer(window, -1, SDL.SDL_RENDERER_ACCELERATED) orelse sdlPanic();
     defer _ = SDL.SDL_DestroyRenderer(renderer);
 
-    strprint("\n");
-    strprint("\n");
-    print(image.stride);
-    strprint("\n");
-    strprint("\n");
+    var r_mask: u32 = undefined; //0x000000FF;
+    var g_mask: u32 = undefined; //0x0000FF00;
+    var b_mask: u32 = undefined; //0x00FF0000;
+    var a_mask: u32 = undefined; //0xFF000000;
 
-    // TODO: figure out if the PNG reading is giving me a currupt image, or if the formatting is wrong (both probably).
+    const format = SDL.SDL_PIXELFORMAT_BGRA8888;
+    _ = SDL.SDL_PixelFormatEnumToMasks(format, @constCast(&image.bit_depth), @constCast(&r_mask), @constCast(&g_mask), @constCast(&b_mask), @constCast(&a_mask));
 
-    const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, 32, image.stride, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF).?;
-    // const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, 1, image.stride, 0, 0, 0, 0).?;
-    const texture: *SDL.SDL_Texture = SDL.SDL_CreateTextureFromSurface(renderer, surface).?;
+    const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, image.bit_depth, image.stride, r_mask, g_mask, b_mask, a_mask).?;
+    _ = surface;
+    // const texture: *SDL.SDL_Texture = SDL.SDL_CreateTextureFromSurface(renderer, surface).?; // Gives static texture access.
 
-    strprint("\nHERE\n");
+    const texture: *SDL.SDL_Texture = SDL.SDL_CreateTexture(renderer, format, SDL.SDL_TEXTUREACCESS_STREAMING, image.width, image.height).?;
 
-    const src_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 0, .y = 0, .w = 100, .h = 100 });
-    const dst_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 50, .y = 50, .w = 100, .h = 100 });
+    const src_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 0, .y = 0, .w = image.width, .h = image.height });
+    const dst_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 50, .y = 50, .w = image.width, .h = image.height });
 
-    // print(SDL.SDL_LockTexture(texture, texture_rect, image.buffer[0], image.stride));
-    // SDL.SDL_UnlockTexture(texture);
-    strprint("\nHERE2\n");
+    var pixels: ?*c_int = undefined; // This is some dumb C shit, holy hell.
+    const pixels_ptr: [*]?*anyopaque = @ptrCast(@alignCast(@constCast(&pixels)));
+
+    var stride: c_int = undefined;
+    const stride_ptr: [*]c_int = @ptrCast(@alignCast(@constCast(&stride)));
+
+    // print(SDL.SDL_UpdateTexture(texture, src_rect, surface.pixels, surface.pitch));
+
+    print(SDL.SDL_LockTexture(texture, src_rect, pixels_ptr, stride_ptr));
+
+    // Do stuff with pixels
+
+    const gpu_pixel: [*]?*anyopaque = pixels_ptr;
+    const start_addr = @intFromPtr(@as(*u8, @ptrCast(gpu_pixel[0].?)));
+
+    { // function // TODO: after it works, try replacing the column loop with slicing
+        // const cpu_pixel: [*]u8 = @constCast(&image.buffer[0]);
+
+        for (0..@intCast(image.height)) |row| {
+            // 32 bit rows, so we point to start of row.
+            var ptr = @as([*]u32, @ptrFromInt(start_addr + row * @as(usize, @intCast(stride))));
+
+            for (0..@intCast(image.width)) |_| {
+
+                // gpu_pixel = 0xFF000000 |
+                ptr += 1;
+                ptr[0] = 0x00_00_FF_00;
+                // gpu_pixel = @as([*]u8, @ptrCast(cpu_pixel))[idx];
+            }
+        }
+    }
+
+    SDL.SDL_UnlockTexture(texture);
 
     main_loop: while (true) {
         var event: SDL.SDL_Event = undefined;
@@ -164,7 +186,7 @@ pub fn main() !void {
             }
         }
 
-        // _ = SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF);
+        _ = SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF);
         _ = SDL.SDL_RenderClear(renderer); // Note: read "Clear" as "Fill"
         _ = SDL.SDL_RenderCopy(renderer, texture, src_rect, dst_rect);
         SDL.SDL_RenderPresent(renderer);
