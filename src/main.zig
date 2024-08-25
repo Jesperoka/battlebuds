@@ -39,7 +39,7 @@ fn image_row_stride(arg_image: png.png_image) c_int {
 const ReadError = error{ OutOfMemory, FailedImageRead };
 
 const Image = struct {
-    buffer: [*]u8 = undefined,
+    buffer: ?*anyopaque = undefined,
     width: c_int = undefined,
     height: c_int = undefined,
     stride: c_int = undefined,
@@ -52,20 +52,20 @@ fn read_png(path: [*:0]const u8, format: c_uint) ReadError!Image {
     var img: png.png_image = undefined;
     _ = c.memset(&img, 0, @sizeOf(png.png_image));
     img.version = png.PNG_IMAGE_VERSION;
-    const stride = image_row_stride(img);
 
     if (png.png_image_begin_read_from_file(&img, path) != 0) {
         img.format = format;
 
-        const buf: ?[*]u8 = @ptrCast(@alignCast(c.malloc(image_size(img))));
-        print(image_size(img));
-        defer if (buf) |b| c.free(b);
+        const buf = c.malloc(image_size(img));
+        // defer if (buf) |b| c.free(b); // this was dumb of me, keeping for future reference of what not to do
 
         if (buf == null) {
             png.png_image_free(&img);
             return ReadError.OutOfMemory;
         }
         if (png.png_image_finish_read(&img, null, buf, 0, null) != 0) {
+            print(image_size(img));
+            const stride = image_row_stride(img);
             return Image{ .buffer = buf.?, .width = @intCast(img.width), .height = @intCast(img.height), .stride = stride };
         }
     }
@@ -128,12 +128,16 @@ pub fn main() !void {
     const renderer = SDL.SDL_CreateRenderer(window, -1, SDL.SDL_RENDERER_ACCELERATED) orelse sdlPanic();
     defer _ = SDL.SDL_DestroyRenderer(renderer);
 
+    strprint("\n");
+    strprint("\n");
     print(image.stride);
+    strprint("\n");
+    strprint("\n");
 
     // TODO: figure out if the PNG reading is giving me a currupt image, or if the formatting is wrong (both probably).
 
-    // const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, 8, image.stride, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF).?;
-    const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, 1, 32, 0, 0, 0, 0).?;
+    const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, 32, image.stride, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF).?;
+    // const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, 1, image.stride, 0, 0, 0, 0).?;
     const texture: *SDL.SDL_Texture = SDL.SDL_CreateTextureFromSurface(renderer, surface).?;
 
     strprint("\nHERE\n");
