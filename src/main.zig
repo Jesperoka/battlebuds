@@ -1,6 +1,7 @@
 const std = @import("std");
 const SDL = @import("sdl2");
 const png = @cImport(@cInclude("png.h"));
+const hid = @cImport(@cInclude("hidapi.h"));
 const c = @cImport({
     @cInclude("stdlib.h");
     @cInclude("string.h");
@@ -37,6 +38,10 @@ const Image = struct {
     height: c_int = undefined,
     stride: c_int = undefined,
     bit_depth: c_int = undefined,
+
+    fn free() void {
+        c.free(@This().buffer);
+    }
 };
 
 // Based on example.c from libpng. Note: calls malloc
@@ -126,7 +131,21 @@ fn copyPixels(start_addr_src: usize, start_addr_dest: usize, stride_src: usize, 
 pub fn main() !void {
     const image: Image = try readPng("assets/first_guy_big.png", png.PNG_FORMAT_RGBA);
 
-    if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO) < 0)
+    // if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO | SDL.SDL_INIT_JOYSTICK) < 0)
+
+    // assert(SDL.SDL_hid_init() == 0);
+    // const vendor_id: c_ushort = @as(c_ushort, @intCast(0x081f));
+    // const product_id: c_ushort = @as(c_ushort, @intCast(0xe401));
+    // const hid_device = SDL.SDL_hid_open(vendor_id, product_id).?;
+    for (@typeInfo(hid).Struct.decls) |f| {
+        strprint("\n");
+        strprint(f.name);
+        // std.debug.warn(f.name ++ " {}\n", @as(f.field_type, @field(SDL, f.name)));
+    }
+    // std.builtin.Type
+    // print(hid_device);
+
+    if (SDL.SDL_Init(SDL.SDL_INIT_EVERYTHING) < 0)
         sdlPanic();
     defer SDL.SDL_Quit();
 
@@ -149,25 +168,21 @@ pub fn main() !void {
     var a_mask: u32 = undefined; //0xFF000000;
 
     const format = SDL.SDL_PIXELFORMAT_ABGR8888;
+    const access_mode = SDL.SDL_TEXTUREACCESS_STREAMING;
     _ = SDL.SDL_PixelFormatEnumToMasks(format, @constCast(&image.bit_depth), @constCast(&r_mask), @constCast(&g_mask), @constCast(&b_mask), @constCast(&a_mask));
 
-    const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, image.bit_depth, image.stride, r_mask, g_mask, b_mask, a_mask).?;
-    _ = surface;
+    // const surface: *SDL.SDL_Surface = SDL.SDL_CreateRGBSurfaceFrom(image.buffer, image.width, image.height, image.bit_depth, image.stride, r_mask, g_mask, b_mask, a_mask).?;
     // const texture: *SDL.SDL_Texture = SDL.SDL_CreateTextureFromSurface(renderer, surface).?; // Gives static texture access.
 
-    const texture: *SDL.SDL_Texture = SDL.SDL_CreateTexture(renderer, format, SDL.SDL_TEXTUREACCESS_STREAMING, image.width, image.height).?;
+    const texture: *SDL.SDL_Texture = SDL.SDL_CreateTexture(renderer, format, access_mode, image.width, image.height).?;
 
-    const src_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 0, .y = 0, .w = image.width, .h = image.height });
-    const dst_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 1920 / 2 - 50, .y = 1080 / 2 - 50, .w = image.width, .h = image.height });
-
-    // This is some dumb C shit, holy hell.
     var pixels: ?*c_int = undefined;
     const pixels_ptr: [*]?*anyopaque = @ptrCast(@alignCast(@constCast(&pixels)));
 
     var stride: c_int = undefined;
     const stride_ptr: [*]c_int = @ptrCast(@alignCast(@constCast(&stride)));
 
-    print(SDL.SDL_LockTexture(texture, src_rect, pixels_ptr, stride_ptr));
+    assert(SDL.SDL_LockTexture(texture, null, pixels_ptr, stride_ptr) == 0);
 
     const stride_gpu = toUsizeChecked(stride);
     const start_addr_gpu = opaqueToAddr(pixels_ptr[0].?);
@@ -182,20 +197,39 @@ pub fn main() !void {
 
     SDL.SDL_UnlockTexture(texture);
 
+    const src_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 0, .y = 0, .w = image.width, .h = image.height });
+    const dst_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 1920 / 2 - 50, .y = 1080 / 2 - 50, .w = image.width, .h = image.height });
+
+    // var event_filter: *SDL.SDL_EventFilter = undefined;
+    // var userdata: [*]?*anyopaque = undefined;
+
+    // assert(SDL.SDL_GetEventFilter(event_filter, userdata) == SDL.SDL_FALSE);
+    strprint("\n");
+
+    // print(event_filter);
+    // print(userdata);
+
     main_loop: while (true) {
         var event: SDL.SDL_Event = undefined;
 
         while (SDL.SDL_PollEvent(&event) != 0) {
+            // print(event.type);
             switch (event.type) {
                 SDL.SDL_QUIT => break :main_loop,
                 SDL.SDL_KEYDOWN => {
                     const keyboard_event: *SDL.SDL_KeyboardEvent = @ptrCast(&event);
                     if (parseKeyboardEvent(keyboard_event.keysym.sym)) break :main_loop;
                 },
+                SDL.SDL_CONTROLLERBUTTONDOWN => {
+                    strprint("HEYO!");
+                    const controller_button_event: *SDL.SDL_ControllerButtonEvent = @ptrCast(&event);
+                    print(controller_button_event);
+                },
 
                 else => {},
             }
         }
+        //
 
         _ = SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF);
         _ = SDL.SDL_RenderClear(renderer); // Note: read "Clear" as "Fill"
