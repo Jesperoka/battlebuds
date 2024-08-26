@@ -83,11 +83,16 @@ since I am getting a bit bored of difficult C interop without enough documentati
 I the process I did watch this talk: [How to Use Abstraction to Kill Your API - J. Marler](https://www.youtube.com/watch?v=aPWFLkHRIAQ),
 so I might take a look at [ZigX](https://github.com/marler8997/zigx) in the future. But for now [SDL2](https://github.com/ikskuh/SDL.zig).
 
+### SDL2 and HIDAPI
+It appears the Zig bindings for SDL2 that I'm using don't yet cover the SDL_hid* functions, so I'm using libhidapi directly,
+with the libusb-1.0 backend.
 
 
 # Dependencies:
 - Zig (using 0.14.0)
-- SDL2
+- SDL2 `sudo apt install libsdl2-dev`
+- libusb-1.0 `sudo apt install libusb-1.0.0-dev`
+- hidapi `libhidapi-dev`
 - ~~libxcb~~
 - ~~libxcb-image `sudo apt install libxcb-image0-dev`~~
 - ~~libdrm (if missing: `sudo apt install mesa-common-dev libglu1-mesa-dev`)~~
