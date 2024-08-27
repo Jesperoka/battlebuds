@@ -29,6 +29,14 @@ fn sdlPanic() noreturn {
     @panic(std.mem.sliceTo(str, 0));
 }
 //-----------------------------------------
+const WindowSettings = struct {
+    const title: [*]const u8 = "Battlebuds";
+    const width: u16 = 1920;
+    const height: u16 = 1080;
+    const x0 = SDL.SDL_WINDOWPOS_CENTERED;
+    const y0 = SDL.SDL_WINDOWPOS_CENTERED;
+    const sdl_flags = SDL.SDL_WINDOW_SHOWN; // | SDL.SDL_WINDOW_BORDERLESS;
+};
 
 const Image = struct {
     buffer: ?*anyopaque = undefined,
@@ -42,14 +50,23 @@ const Image = struct {
     }
 };
 
-const WindowSettings = struct {
-    const title: [*]const u8 = "Battlebuds";
-    const width: u16 = 1920;
-    const height: u16 = 1080;
-    const x0 = SDL.SDL_WINDOWPOS_CENTERED;
-    const y0 = SDL.SDL_WINDOWPOS_CENTERED;
-    const sdl_flags = SDL.SDL_WINDOW_SHOWN; // | SDL.SDL_WINDOW_BORDERLESS;
-};
+const UsbGamepadReport = packed struct {
+    x_axis: u8,
+    y_axis: u8,
+    padding_0: u24,
+    padding_1: u4,
+    button0: u1, // X
+    button1: u1, // A
+    button2: u1, // B
+    button3: u1, // Y
+    button4: u1, // L
+    button5: u1, // R
+    button6: u1, // unused
+    button7: u1, // unused
+    button8: u1, // select
+    button9: u1, // start
+    unknown: u10,
+}; // 64 bits
 
 const CharacterPositions = struct {
     const uint = u8;
@@ -146,24 +163,16 @@ pub fn main() !void {
     const vendor_id: c_ushort = 0x081F;
     const product_id: c_ushort = 0xE401;
 
-    // const first_device: ?*hid.hid_device_info = hid.hid_enumerate(vendor_id, product_id);
-    // defer hid.hid_free_enumeration(first_device);
-
-    // const device = first_device;
-    // _ = device;
-    // print(device);
-
-    // var hid_dev: *hid.hid_device = undefined;
-    // strprint("\n\n\n");
-    // while (device != null) : (device = device.?.next) {
-    //     const dev = device.?;
-    //     if (dev.vendor_id == vendor_id and dev.product_id == product_id) {
-    //         hid_dev = hid.hid_open_path(dev.path).?;
-    //     }
-    // }
-
     const hid_dev: *hid.hid_device = hid.hid_open(vendor_id, product_id, null).?;
-    print(hid_dev);
+
+    const report_bytes = 8; // + 1 if numbered report
+    var data: [report_bytes]u8 = undefined;
+    assert(hid.hid_read(hid_dev, &data, report_bytes) != -1, "hid_read() failed.");
+    print(data);
+
+    const report_struct: *UsbGamepadReport = @ptrCast(@alignCast(&data));
+    print(report_struct);
+
     // const err_msg = hid.hid_error(hid_dev).?;
     // print(err_msg);
 
@@ -253,7 +262,8 @@ pub fn main() !void {
                 else => {},
             }
         }
-        //
+
+        // USB controller event handling
 
         _ = SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF);
         _ = SDL.SDL_RenderClear(renderer); // Note: read "Clear" as "Fill"
