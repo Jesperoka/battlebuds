@@ -1,5 +1,5 @@
 # battlebuds
-Learning Zig, XCB and HID controller interfacing by making a game.
+Learning Zig, ~~Libdrm~~ ~~XCB~~ SDL2 and HID controller interfacing by making a game.
 
 This is for educational purposes for the forseeable future.
 
@@ -21,7 +21,7 @@ Functionality:
 - ~~[ ] Draw pixmaps with XCB.~~
 - [X] Draw anything with SDL2.
 - [X] Correctly draw a texture to screen.
-- [ ] Read input from controller (libudev?).
+- [ ] Read input from controller (hidapi).
 - [ ] Create a loop to move some shape based on controller input.
 - [ ] Move multiple (displayed) objects at once.
 - [ ] Create basic collision detection
@@ -87,6 +87,13 @@ so I might take a look at [ZigX](https://github.com/marler8997/zigx) in the futu
 It appears the Zig bindings for SDL2 that I'm using don't yet cover the SDL_hid* functions, so I'm using libhidapi directly,
 with the libusb-1.0 backend.
 
+### USB permissions
+Added a template rule file to be put in /etc/udev/rules.d/ for usb access without `sudo`. I wasn't working at first,
+after running the `sudo udevadm control --reload-rules` and `sudo udevadm trigger` commands in a restarted terminal.
+Mucked around with different variations of the rule, but after restarting WSL2 in the other terminal I was using as well, 
+and reloading the rules again, suddenly it worked. I'm assuming it had something to do with USB passthrough to WSL2,
+rule loading and some interaction between those when restarting terminals. Basically, it's probably best to just add
+the rule, plug out the device, restart WSL2 terminals or Ubuntu and then reloading the rules just to be safe.
 
 # Dependencies:
 - Zig (using 0.14.0)
