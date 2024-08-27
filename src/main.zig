@@ -8,14 +8,69 @@ const c = @cImport({
     // @cInclude("stdio.h");
 });
 
-const assert = std.debug.assert;
+// Utils
+//-----------------------------------------
+fn assert(ok: bool, msg: []const u8) void {
+    if (ok) return;
+    const @"_" = "\nAssertion error: {s}\n";
+    std.debug.print(@"_", .{msg});
+    unreachable;
+}
 
 fn print(arg: anytype) void {
     std.debug.print("{any}", .{arg});
 }
-fn strprint(str: []const u8) void {
+fn strprint(str: anytype) void {
     std.debug.print("{s}", .{str});
 }
+
+fn sdlPanic() noreturn {
+    const str = @as(?[*:0]const u8, SDL.SDL_GetError()) orelse "unknown error";
+    @panic(std.mem.sliceTo(str, 0));
+}
+//-----------------------------------------
+
+const Image = struct {
+    buffer: ?*anyopaque = undefined,
+    width: c_int = undefined,
+    height: c_int = undefined,
+    stride: c_int = undefined,
+    bit_depth: c_int = undefined,
+
+    fn free() void {
+        c.free(@This().buffer);
+    }
+};
+
+const WindowSettings = struct {
+    const title: [*]const u8 = "Battlebuds";
+    const width: u16 = 1920;
+    const height: u16 = 1080;
+    const x0 = SDL.SDL_WINDOWPOS_CENTERED;
+    const y0 = SDL.SDL_WINDOWPOS_CENTERED;
+    const sdl_flags = SDL.SDL_WINDOW_SHOWN; // | SDL.SDL_WINDOW_BORDERLESS;
+};
+
+const CharacterPositions = struct {
+    const uint = u8;
+    const float = f16;
+
+    num_characters: uint = 1,
+    X: @Vector(.num_characters, float) = @splat(0),
+    Y: @Vector(.num_characters, float) = @splat(0),
+
+    fn get(idx: uint) @Vector(2, float) {
+        return @Vector(2, float){ .X[idx], .Y[idx] };
+    }
+    // inline fn getX(idx: uint) float {
+    //     return X[idx];
+    // }
+    // inline fn getY(idx: uint) float {
+    //     return Y[idx];
+    // }
+};
+
+const ReadError = error{ OutOfMemory, FailedImageRead };
 
 // Translated expanded C macros from libpng
 //-----------------------------------------
@@ -29,20 +84,6 @@ fn imagePixelSize(image: png.png_image) c_int {
     return @as(c_int, @bitCast(if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else ((@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% (((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 4)) >> @intCast(2)) +% @as(c_uint, @bitCast(@as(c_int, 1))))));
 }
 //-----------------------------------------
-
-const ReadError = error{ OutOfMemory, FailedImageRead };
-
-const Image = struct {
-    buffer: ?*anyopaque = undefined,
-    width: c_int = undefined,
-    height: c_int = undefined,
-    stride: c_int = undefined,
-    bit_depth: c_int = undefined,
-
-    fn free() void {
-        c.free(@This().buffer);
-    }
-};
 
 // Based on example.c from libpng. Note: calls malloc
 fn readPng(path: [*:0]const u8, format: c_uint) ReadError!Image {
@@ -76,35 +117,6 @@ fn parseKeyboardEvent(keycode: c_int) bool {
     return false;
 }
 
-const WindowSettings = struct {
-    const title: [*]const u8 = "Battlebuds";
-    const width: u16 = 1920;
-    const height: u16 = 1080;
-    const x0 = SDL.SDL_WINDOWPOS_CENTERED;
-    const y0 = SDL.SDL_WINDOWPOS_CENTERED;
-    const sdl_flags = SDL.SDL_WINDOW_SHOWN; // | SDL.SDL_WINDOW_BORDERLESS;
-};
-
-const CharacterPositions = struct {
-    const uint = u8;
-    const float = f16;
-
-    const num_characters: uint = 1;
-
-    var X: @Vector(num_characters, float) = @splat(0);
-    var Y: @Vector(num_characters, float) = @splat(0);
-
-    fn get(idx: uint) @Vector(2, float) {
-        return @Vector(2, float){ X[idx], Y[idx] };
-    }
-    // inline fn getX(idx: uint) float {
-    //     return X[idx];
-    // }
-    // inline fn getY(idx: uint) float {
-    //     return Y[idx];
-    // }
-};
-
 fn opaqueToAddr(ptr: *anyopaque) usize {
     return @intFromPtr(@as(*u8, @ptrCast(ptr)));
 }
@@ -129,23 +141,35 @@ fn copyPixels(start_addr_src: usize, start_addr_dest: usize, stride_src: usize, 
 }
 
 pub fn main() !void {
+    assert(hid.hid_init() == 0, "hid_init() failed.");
+
+    const vendor_id: c_ushort = 0x081F;
+    const product_id: c_ushort = 0xE401;
+
+    // const first_device: ?*hid.hid_device_info = hid.hid_enumerate(vendor_id, product_id);
+    // defer hid.hid_free_enumeration(first_device);
+
+    // const device = first_device;
+    // _ = device;
+    // print(device);
+
+    // var hid_dev: *hid.hid_device = undefined;
+    // strprint("\n\n\n");
+    // while (device != null) : (device = device.?.next) {
+    //     const dev = device.?;
+    //     if (dev.vendor_id == vendor_id and dev.product_id == product_id) {
+    //         hid_dev = hid.hid_open_path(dev.path).?;
+    //     }
+    // }
+
+    const hid_dev: *hid.hid_device = hid.hid_open(vendor_id, product_id, null).?;
+    print(hid_dev);
+    // const err_msg = hid.hid_error(hid_dev).?;
+    // print(err_msg);
+
     const image: Image = try readPng("assets/first_guy_big.png", png.PNG_FORMAT_RGBA);
 
-    // if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO | SDL.SDL_INIT_JOYSTICK) < 0)
-
-    // assert(SDL.SDL_hid_init() == 0);
-    // const vendor_id: c_ushort = @as(c_ushort, @intCast(0x081f));
-    // const product_id: c_ushort = @as(c_ushort, @intCast(0xe401));
-    // const hid_device = SDL.SDL_hid_open(vendor_id, product_id).?;
-    for (@typeInfo(hid).Struct.decls) |f| {
-        strprint("\n");
-        strprint(f.name);
-        // std.debug.warn(f.name ++ " {}\n", @as(f.field_type, @field(SDL, f.name)));
-    }
-    // std.builtin.Type
-    // print(hid_device);
-
-    if (SDL.SDL_Init(SDL.SDL_INIT_EVERYTHING) < 0)
+    if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO) < 0)
         sdlPanic();
     defer SDL.SDL_Quit();
 
@@ -157,7 +181,7 @@ pub fn main() !void {
         WindowSettings.height,
         WindowSettings.sdl_flags,
     ) orelse sdlPanic();
-    defer _ = SDL.SDL_DestroyWindow(window);
+    defer SDL.SDL_DestroyWindow(window);
 
     const renderer = SDL.SDL_CreateRenderer(window, -1, SDL.SDL_RENDERER_ACCELERATED) orelse sdlPanic();
     defer _ = SDL.SDL_DestroyRenderer(renderer);
@@ -182,7 +206,7 @@ pub fn main() !void {
     var stride: c_int = undefined;
     const stride_ptr: [*]c_int = @ptrCast(@alignCast(@constCast(&stride)));
 
-    assert(SDL.SDL_LockTexture(texture, null, pixels_ptr, stride_ptr) == 0);
+    assert(SDL.SDL_LockTexture(texture, null, pixels_ptr, stride_ptr) == 0, "SDL_LockTexture() failed.");
 
     const stride_gpu = toUsizeChecked(stride);
     const start_addr_gpu = opaqueToAddr(pixels_ptr[0].?);
@@ -236,9 +260,4 @@ pub fn main() !void {
         _ = SDL.SDL_RenderCopy(renderer, texture, src_rect, dst_rect);
         SDL.SDL_RenderPresent(renderer);
     }
-}
-
-fn sdlPanic() noreturn {
-    const str = @as(?[*:0]const u8, SDL.SDL_GetError()) orelse "unknown error";
-    @panic(std.mem.sliceTo(str, 0));
 }
