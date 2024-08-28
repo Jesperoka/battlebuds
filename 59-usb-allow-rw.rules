@@ -1,0 +1,42 @@
+# Rules file to allow the logged in user to access usb devices without root priviliges.
+#
+# After modifying (setting <GROUPNAME> to your "username") and putting this file in /etc/udev/rules.d/ run:
+#
+# sudo udevadm control --reload-rules && udevadm trigger --action=change
+# 
+# or just reboot.
+#
+#
+# Specific Device. Use lsusb to see venderId:productId
+# More information at: https://www.reactivated.net/writing_udev_rules.html#ownership
+#
+# Gives the current user read-write access (this will not necessarily be enough):
+# SUBSYSTEM=="usb", ATTR{idVendor}=="081f", ATTR{idProduct}=="e401", MODE:="0660", TAG+="uaccess"
+#
+# Gives all users read-write access (this generally works, but does what it says):
+# SUBSYSTEM=="usb", ATTR{idVendor}=="081f", ATTR{idProduct}=="e401", MODE:="0666"
+#
+# Gives all users in group <GROUPNAME> read-write access (this generally works, <GROUPNAME> might be your username):
+# SUBSYSTEM=="usb", ATTR{idVendor}=="081f", ATTR{idProduct}=="e401", MODE:="0666", GROUP=<GROUPNAME>
+#
+# Gives the current user access if they are in group <GROUPNAME> (this generally works, <GROUPNAME> might be your username, and is probably what you want):
+SUBSYSTEM=="usb", ATTR{idVendor}=="081f", ATTR{idProduct}=="e401", MODE:="0660", TAG+="uaccess" GROUP=<GROUPNAME>
+#
+# Gives the current user access if they are in group "plugdev" (might be Ubuntu/Debian specific default group, not sure).
+# SUBSYSTEM=="usb", ATTR{idVendor}=="081f", ATTR{idProduct}=="e401", MODE:="0660", TAG+="uaccess" GROUP="plugdev"
+#
+#
+# Class 3 (HID) devices:
+#
+# Note: check if bInterfaceClass is an ATTR of the device with: udevadm info -a <PATH>
+# where path is something like: /dev/bus/usb/001/002
+# You can use lsusb to see which bus and device you device is.
+# Also note the difference between ATTR and ATTRS in the output for device and parent devices.
+# https://www.reactivated.net/writing_udev_rules.html
+#
+# In my case, the device does not have the bInterfaceClass ATTR, so the following doesn't work.
+# SUBSYSTEM=="usb", ATTR{bInterfaceClass}=="3", MODE:="0666", GROUP=<USERNAME>
+# SUBSYSTEM=="usb", ATTR{bInterfaceClass}=="03", MODE:="0660", TAG+="uaccess" GROUP=<USERNAME>
+# SUBSYSTEM=="usb", ATTR{bInterfaceClass}=="03", MODE:="0660", TAG+="uaccess" GROUP="plugdev"
+#
+# You can match on other ATTR and ATTRS.
