@@ -21,7 +21,7 @@ Functionality:
 - ~~[ ] Draw pixmaps with XCB.~~
 - [X] Draw anything with SDL2.
 - [X] Correctly draw a texture to screen.
-- [ ] Read input from controller (hidapi).
+- [X] Read input from controller (hidapi).
 - [ ] Create a loop to move some shape based on controller input.
 - [ ] Move multiple (displayed) objects at once.
 - [ ] Create basic collision detection
@@ -88,12 +88,55 @@ It appears the Zig bindings for SDL2 that I'm using don't yet cover the SDL_hid*
 with the libusb-1.0 backend.
 
 ### USB permissions
-Added a template rule file to be put in /etc/udev/rules.d/ for usb access without `sudo`. I wasn't working at first,
-after running the `sudo udevadm control --reload-rules` and `sudo udevadm trigger` commands in a restarted terminal.
-Mucked around with different variations of the rule, but after restarting WSL2 in the other terminal I was using as well, 
-and reloading the rules again, suddenly it worked. I'm assuming it had something to do with USB passthrough to WSL2,
-rule loading and some interaction between those when restarting terminals. Basically, it's probably best to just add
-the rule, plug out the device, restart WSL2 terminals or Ubuntu and then reloading the rules just to be safe.
+It turns out my device didn't have the udev ATTR bInterfaceClass, so I needed to match on the vendor and product ids.
+Also needed to either give all users read-write access, or give read-write access to the "plugdev" group, or to the
+group of my username.
+
+### HIDAPI and Controllers
+I was a bit worried at first that I would need to reverse engineer the usb input report packages sent by the bootleg
+controllers:
+<div align="center">
+    <img src="docs/imgs/Gamepads.webp" width="350">
+    <br>Four unknown controllers I found in some electrical waste (still packaging plastic).<br><br>
+</div>
+So I opened one of them to see if I could find some information about who made these:<br><br> 
+
+<div align="center">
+    <img src="docs/imgs/InsideGamepad0.webp" height="175">
+    <img src="docs/imgs/InsideGamepad1.webp" height="175">
+    <br>Inside of the controllers.<br><br>
+</div>
+I could not.<br><br>
+
+Luckily however, an super useful tool called [hidviz](https://github.com/hidviz/hidviz) allowed me to confirm that
+whoever made these controllers did follow some HID standards, giving information on the bits in the usb reports from the device.
+Thus I can pack the received bytes into a nice Zig packed struct.
+```Zig
+const UsbGamepadReport = packed struct {
+    x_axis: u8,
+    y_axis: u8,
+    padding_0: u24,
+    padding_1: u4,
+    button0: u1, // X
+    button1: u1, // A
+    button2: u1, // B
+    button3: u1, // Y
+    button4: u1, // L
+    button5: u1, // R
+    button6: u1, // unused
+    button7: u1, // unused
+    button8: u1, // select
+    button9: u1, // start
+    unknown: u10,
+}; // 64 bits
+```
+```Zig
+const hid = @cImport(@cInclude("hidapi.h"));
+const report_bytes = 8;
+var data: [report_bytes]u8 = undefined;
+const retval = hid.hid_read(hid_dev, &data, report_bytes)
+const report_struct: *UsbGamepadReport = @ptrCast(@alignCast(&data));
+```
 
 # Dependencies:
 - Zig (using 0.14.0)
