@@ -51,22 +51,28 @@ const Image = struct {
 };
 
 const UsbGamepadReport = packed struct {
-    x_axis: u8,
-    y_axis: u8,
+    x_axis: u8, // left: 0, middle: 127, right: 255
+    y_axis: u8, // down: 0, middle: 127, up: 255
     padding_0: u24,
     padding_1: u4,
-    button0: u1, // X
-    button1: u1, // A
-    button2: u1, // B
-    button3: u1, // Y
-    button4: u1, // L
-    button5: u1, // R
+    X: u1,
+    A: u1,
+    B: u1,
+    Y: u1,
+    L: u1,
+    R: u1,
     button6: u1, // unused
     button7: u1, // unused
-    button8: u1, // select
-    button9: u1, // start
+    select: u1,
+    start: u1,
     unknown: u10,
 }; // 64 bits
+
+const PlayerAction = struct {
+    x_dir: enum { LEFT, RIGHT, NONE } = .NONE,
+    jump: bool = false,
+    shoot_dir: enum { UP, DOWN, LEFT, RIGHT, NONE } = .NONE,
+};
 
 const CharacterPositions = struct {
     const uint = u8;
@@ -157,6 +163,14 @@ fn copyPixels(start_addr_src: usize, start_addr_dest: usize, stride_src: usize, 
     }
 }
 
+fn action(gamepad_report: *UsbGamepadReport) PlayerAction {
+    return PlayerAction{
+        .x_dir = if (gamepad_report.x_axis == 0) .LEFT else if (gamepad_report.x_axis == 255) .RIGHT else .NONE,
+        .jump = @bitCast(gamepad_report.R),
+        .shoot_dir = if (@bitCast(gamepad_report.Y)) .LEFT else if (@bitCast(gamepad_report.A)) .RIGHT else if (@bitCast(gamepad_report.X)) .UP else if (@bitCast(gamepad_report.B)) .DOWN else .NONE,
+    };
+}
+
 pub fn main() !void {
     assert(hid.hid_init() == 0, "hid_init() failed.");
 
@@ -231,7 +245,7 @@ pub fn main() !void {
     SDL.SDL_UnlockTexture(texture);
 
     const src_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 0, .y = 0, .w = image.width, .h = image.height });
-    const dst_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 1920 / 2 - 50, .y = 1080 / 2 - 50, .w = image.width, .h = image.height });
+    var dst_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 1920 / 2 - 50, .y = 1080 / 2 - 50, .w = image.width, .h = image.height });
 
     // var event_filter: *SDL.SDL_EventFilter = undefined;
     // var userdata: [*]?*anyopaque = undefined;
@@ -264,6 +278,14 @@ pub fn main() !void {
         }
 
         // USB controller event handling
+        assert(hid.hid_read(hid_dev, &data, report_bytes) != -1, "hid_read() failed.");
+        const player_action: PlayerAction = action(report_struct);
+
+        switch (player_action.x_dir) {
+            .LEFT => dst_rect.x -= 1,
+            .RIGHT => dst_rect.x += 1,
+            else => {},
+        }
 
         _ = SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF);
         _ = SDL.SDL_RenderClear(renderer); // Note: read "Clear" as "Fill"

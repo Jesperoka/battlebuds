@@ -87,7 +87,7 @@ so I might take a look at [ZigX](https://github.com/marler8997/zigx) in the futu
 It appears the Zig bindings for SDL2 that I'm using don't yet cover the SDL_hid* functions, so I'm using libhidapi directly,
 with the libusb-1.0 backend.
 
-### USB permissions
+### USB Permissions
 It turns out my device didn't have the udev ATTR bInterfaceClass, so I needed to match on the vendor and product ids.
 Also needed to either give all users read-write access, or give read-write access to the "plugdev" group, or to the
 group of my username.
@@ -113,20 +113,20 @@ whoever made these controllers did follow some HID standards, giving information
 Thus I can pack the received bytes into a nice Zig packed struct.
 ```Zig
 const UsbGamepadReport = packed struct {
-    x_axis: u8,
-    y_axis: u8,
+    x_axis: u8, // left: 0, middle: 127, right: 255
+    y_axis: u8, // down: 0, middle: 127, up: 255
     padding_0: u24,
     padding_1: u4,
-    button0: u1, // X
-    button1: u1, // A
-    button2: u1, // B
-    button3: u1, // Y
-    button4: u1, // L
-    button5: u1, // R
+    X: u1,
+    A: u1,
+    B: u1,
+    Y: u1,
+    L: u1,
+    R: u1,
     button6: u1, // unused
     button7: u1, // unused
-    button8: u1, // select
-    button9: u1, // start
+    select: u1,
+    start: u1,
     unknown: u10,
 }; // 64 bits
 ```
@@ -137,6 +137,12 @@ var data: [report_bytes]u8 = undefined;
 const retval = hid.hid_read(hid_dev, &data, report_bytes)
 const report_struct: *UsbGamepadReport = @ptrCast(@alignCast(&data));
 ```
+
+### Character Control Design
+Because the d-pad sensor is a bit rough, and often gets both horizontal and vertical inputs when pressing,
+we can work around the issue by not using the vertical direction, and just have horizontal movement
+with a button press for jumping.
+
 
 # Dependencies:
 - Zig (using 0.14.0)
