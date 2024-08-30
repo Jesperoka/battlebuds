@@ -22,7 +22,7 @@ Functionality:
 - [X] Draw anything with SDL2.
 - [X] Correctly draw a texture to screen.
 - [X] Read input from controller (hidapi).
-- [ ] Create a loop to move some shape based on controller input.
+- [X] Create a loop to move some shape based on controller input.
 - [ ] Move multiple (displayed) objects at once.
 - [ ] Create basic collision detection
 - [ ] Add basic Newtonian physics.
@@ -142,6 +142,32 @@ const report_struct: *UsbGamepadReport = @ptrCast(@alignCast(&data));
 Because the d-pad sensor is a bit rough, and often gets both horizontal and vertical inputs when pressing,
 we can work around the issue by not using the vertical direction, and just have horizontal movement
 with a button press for jumping.
+
+### Zig Function Parameters
+As it happens, when passing a value to a function, Zig choose whether to copy or pass a reference
+to the parameter, depending on which is faster. This is possible because Zig function parameters are immutable,
+and one should treat all parameters as being copied values. 
+[Pass-by-Value Parameters](https://ziglang.org/documentation/master/#toc-Pass-by-value-Parameters).
+
+Thus, math functions that take large `@Vector`s don't need to worry about expensive copies, so this is fine:
+```Zig
+fn elementwiseAddition(vec1: @Vector(99999, f64), vec2: @Vector(99999, f64)) @Vector(99999, f64) {
+    return vec1 + vec2;   
+}
+```
+
+### Zig init() Idiom When Trying not to Heap Allocate
+To avoid dangling pointers when initializing pointer fields in a struct through an init()
+method, we need to pass the pointer to the init function, for the address to valid after the
+end of the function scope. This greatly displeases me :) and looks too much like C for my liking.
+[GitHub issue comment](https://github.com/ziglang/zig/issues/13640#issuecomment-1333098517)
+
+There are some proposals that will change this:
+[Result Locations](https://github.com/ziglang/zig/issues/2765)
+[Pinned Structs](https://github.com/ziglang/zig/issues/7769)
+
+
+
 
 
 # Dependencies:
