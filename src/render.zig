@@ -40,13 +40,12 @@ const ReadError = error{ OutOfMemory, FailedImageRead };
 
 pub const Renderer = struct {
     var image: Image = .{}; // TODO: delete
+
     textures: [game_assets.len]*SDL.SDL_Texture = undefined,
     renderer: *SDL.SDL_Renderer = undefined,
     window: *SDL.SDL_Window = undefined,
     num_textures: u8 = undefined,
 
-    // BUG: I need to figure out how to init this without dangling memory
-    // Trying to pass pointer for now. Don't want to allocate memory
     pub fn init(self: *Renderer) *Renderer {
         if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO) < 0) {
             utils.sdlPanic();
@@ -67,7 +66,7 @@ pub const Renderer = struct {
         }
 
         self.num_textures = game_assets.len;
-        self.load_textures(&game_assets);
+        self.load_textures(&game_assets) catch |err| std.debug.panic("Error: {any}", .{err});
 
         for (0..self.textures.len) |i| {
             if (SDL.SDL_SetTextureBlendMode(self.textures[i], SDL.SDL_BLENDMODE_BLEND) < 0) {
@@ -79,20 +78,20 @@ pub const Renderer = struct {
         return self;
     }
 
-    fn deinit(self: Renderer) void {
+    fn deinit(self: *Renderer) void {
         for (.textures) |texture| SDL.SDL_DestroyTexture(texture);
         _ = SDL.SDL_DestroyRenderer(self.renderer);
         SDL.SDL_DestroyWindow(self.window);
         SDL.SDL_Quit();
     }
 
-    fn load_textures(self: *Renderer, comptime assets: []const []const u8) void {
+    fn load_textures(self: *Renderer, comptime assets: []const []const u8) ReadError!void {
         const format = SDL.SDL_PIXELFORMAT_ABGR8888;
         const access_mode = SDL.SDL_TEXTUREACCESS_STREAMING;
 
         for (assets, 0..self.num_textures) |path, i| {
-            const img = readPng(@as([*:0]const u8, @ptrCast(path)), png.PNG_FORMAT_RGBA) catch unreachable;
-            // defer image.free(); // TODO: free
+            const img = try readPng(@as([*:0]const u8, @ptrCast(path)), png.PNG_FORMAT_RGBA);
+            defer image.free(); // TODO: free
             image = img;
 
             self.textures[i] = SDL.SDL_CreateTexture(self.renderer, format, access_mode, image.width, image.height) orelse utils.sdlPanic();
@@ -116,7 +115,12 @@ pub const Renderer = struct {
             SDL.SDL_UnlockTexture(self.textures[i]);
         }
     }
-    pub fn render(self: Renderer) void {
+
+    // TODO: I need to think about whether I want the SimulationState to contain information
+    // about rendering in terms of who is offscreen or what, or maybe I just want a separate
+    // rendering information struct.
+
+    pub fn render(self: *Renderer) void {
         const src_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 0, .y = 0, .w = image.width, .h = image.height });
         const dst_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 1920 / 2 - 49, .y = 1080 / 2 - 49, .w = image.width, .h = image.height });
         // const dst_rect_2: *SDL.SDL_Rect = @constCast(&.{ .x = 500 / 2 - 49, .y = 300 / 2 - 49, .w = image.width, .h = image.height });
@@ -168,8 +172,12 @@ fn readPng(path: [*:0]const u8, format: c_uint) ReadError!Image {
 }
 
 fn fillWithColor(renderer: *SDL.SDL_Renderer) void {
-    _ = SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF);
-    _ = SDL.SDL_RenderClear(renderer); // Note: read "Clear" as "Fill"
+    if (SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF) < 0) {
+        utils.sdlPanic();
+    }
+    if (SDL.SDL_RenderClear(renderer) < 0) { // Note: read "Clear" as "Fill"
+        utils.sdlPanic();
+    }
 }
 
 fn opaqueToAddr(ptr: *anyopaque) usize {

@@ -1,7 +1,7 @@
 /// Gameplay logic
 const std = @import("std");
 const utils = @import("utils.zig");
-const Renderer = @import("render.zig").Renderer;
+pub const Renderer = @import("render.zig").Renderer;
 const SimulatorState = @import("physics.zig").SimulatorState;
 const hidapi = @cImport(@cInclude("hidapi.h"));
 
@@ -17,32 +17,23 @@ const SDL_Window = @import("sdl2").SDL_Window;
 pub const Game = struct {
     const max_num_players = 4;
 
+    player_actions: [max_num_players]InputHandler.PlayerAction = undefined,
     input_handler: *InputHandler,
     renderer: *Renderer,
-    sim_state: *SimulatorState,
-    timer: *std.time.Timer,
-    player_actions: [max_num_players]InputHandler.PlayerAction,
+    sim_state: SimulatorState,
+    timer: std.time.Timer,
     num_players: u8,
 
     pub fn init(
         comptime num_players: u8,
         input_handler: *InputHandler,
+        renderer: *Renderer,
     ) Game {
         return Game{
             .input_handler = input_handler.init(num_players),
-            .renderer = init: {
-                var renderer = Renderer{};
-                break :init renderer.init();
-            },
-            .sim_state = init: {
-                var sim_state = SimulatorState{ .num_characters = num_players };
-                break :init &sim_state;
-            },
-            .timer = init: {
-                var timer = std.time.Timer.start() catch unreachable;
-                break :init &timer;
-            },
-            .player_actions = undefined,
+            .renderer = renderer.init(),
+            .sim_state = SimulatorState{ .num_characters = num_players },
+            .timer = std.time.Timer.start() catch unreachable,
             .num_players = num_players,
         };
     }
@@ -136,8 +127,6 @@ pub const InputHandler = struct {
         var j: usize = 0;
         while (current) |dev| {
             if (dev.*.vendor_id == vendor_id and dev.*.product_id == product_id) {
-                utils.strprint("serial_number: ");
-                utils.print(dev.*.serial_number);
                 self.devices[j] = hidapi.hid_open_path(dev.*.path).?;
                 j += 1;
             }
@@ -150,19 +139,10 @@ pub const InputHandler = struct {
             self.reports[i] = @ptrCast(@alignCast(&self.report_data[i]));
         }
 
-        utils.strprint("\n\n");
-        utils.print(self.reports[0]);
-        utils.strprint("\n\n");
-        utils.print(self.reports[1]);
-        utils.strprint("\n\n");
-        utils.print(self.num_devices);
-        utils.strprint("\n\n");
-
         return self;
     }
 
     fn read_input(self: *InputHandler) []*UsbGamepadReport {
-        utils.print(self.num_devices);
         for (0..self.num_devices) |i| {
             utils.assert(hidapi.hid_read_timeout(
                 self.devices[i],
