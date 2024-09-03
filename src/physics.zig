@@ -13,7 +13,7 @@ pub const SimulatorState = struct {
     newton_max_iters: u16 = 10,
     newton_epsilon: f32 = 10e-6,
 
-    const Vec = @Vector(@This().num_characters, float);
+    const Vec = @Vector(@This().num_characters, float); // num_characters probably needs to be comptime
 
     const PhysicsState = struct {
         X: Vec = @splat(0),

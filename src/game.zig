@@ -2,6 +2,7 @@
 const std = @import("std");
 const utils = @import("utils.zig");
 pub const Renderer = @import("render.zig").Renderer;
+const Entities = @import("render.zig").Entities;
 const SimulatorState = @import("physics.zig").SimulatorState;
 const hidapi = @cImport(@cInclude("hidapi.h"));
 
@@ -20,6 +21,7 @@ pub const Game = struct {
     player_actions: [max_num_players]InputHandler.PlayerAction = undefined,
     input_handler: *InputHandler,
     renderer: *Renderer,
+    entities: Entities,
     sim_state: SimulatorState,
     timer: std.time.Timer,
     num_players: u8,
@@ -32,16 +34,18 @@ pub const Game = struct {
         return Game{
             .input_handler = input_handler.init(num_players),
             .renderer = renderer.init(),
+            .entities = Entities{},
             .sim_state = SimulatorState{ .num_characters = num_players },
             .timer = std.time.Timer.start() catch unreachable,
             .num_players = num_players,
         };
     }
-    pub fn deinit() void {}
+    pub fn deinit(self: *Game) void {
+        self.input_handler.deinit();
+        self.renderer.deinit();
+    }
 
     pub fn run(self: *Game) void {
-        defer deinit();
-
         var stop = false;
         while (!stop) {
             stop = self.step();
@@ -56,8 +60,13 @@ pub const Game = struct {
         const stop = handle_sdl_events();
 
         // simulate
+        switch (self.player_actions[0].x_dir) {
+            .RIGHT => self.entities.X[0] += 1,
+            .LEFT => self.entities.X[0] -= 1,
+            else => {},
+        }
 
-        self.renderer.render();
+        self.renderer.render(&self.entities) catch unreachable;
 
         return stop;
     }
@@ -122,6 +131,8 @@ pub const InputHandler = struct {
         utils.assert(hidapi.hid_init() == 0, "hid_init() failed.");
 
         const device_info = hidapi.hid_enumerate(vendor_id, product_id);
+        defer hidapi.hid_free_enumeration(device_info);
+
         var current = device_info;
 
         var j: usize = 0;
@@ -140,6 +151,12 @@ pub const InputHandler = struct {
         }
 
         return self;
+    }
+
+    fn deinit(self: *InputHandler) void {
+        for (0..self.num_devices) |idx| {
+            hidapi.hid_close(self.devices[idx]);
+        }
     }
 
     fn read_input(self: *InputHandler) []*UsbGamepadReport {

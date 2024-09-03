@@ -1,4 +1,4 @@
-/// blech
+/// SDL2 for window management and pointers to GPU buffers.
 const std = @import("std");
 const SDL = @import("sdl2");
 const utils = @import("utils.zig");
@@ -6,7 +6,6 @@ const png = @cImport(@cInclude("png.h"));
 const c = @cImport({
     @cInclude("stdlib.h");
     @cInclude("string.h");
-    // @cInclude("stdio.h");
 });
 
 const WindowSettings = struct {
@@ -18,30 +17,116 @@ const WindowSettings = struct {
     const sdl_flags = SDL.SDL_WINDOW_SHOWN; // | SDL.SDL_WINDOW_BORDERLESS;
 };
 
-const game_assets = [_][]const u8{
-    "assets/first_guy_big.png",
-    // "assets/first_guy.png",
-};
-
-// TODO: don't need default
 const Image = struct {
-    buffer: ?*anyopaque = undefined,
-    width: c_int = undefined,
-    height: c_int = undefined,
-    stride: c_int = undefined,
-    bit_depth: c_int = undefined,
+    buffer: ?*anyopaque,
+    width: c_int,
+    height: c_int,
+    stride: c_int,
+    bit_depth: c_int,
 
     fn free(self: Image) void {
         c.free(self.buffer);
     }
 };
 
+const Asset = struct {
+    path: []const u8,
+    id: ID,
+};
+
+const ID = enum {
+    FIRST_GUY,
+};
+
+const game_assets: [1]Asset = .{
+    .{ .path = "assets/first_guy_big.png", .id = .FIRST_GUY },
+    // "assets/first_guy.png",
+};
+
+const Textures = struct {
+    const Tex = struct {
+        ptr: *SDL.SDL_Texture,
+        width: c_int,
+        height: c_int,
+    };
+    map: @TypeOf(utils.StaticMap(game_assets.len, Tex, ID)) = utils.StaticMap(game_assets.len, Tex, ID),
+};
+
 const ReadError = error{ OutOfMemory, FailedImageRead };
 
-pub const Renderer = struct {
-    var image: Image = .{}; // TODO: delete
+pub const Entities = struct {
+    const N = 1;
+    X: [N]u16 = [_]u16{WindowSettings.width / 2},
+    Y: [N]u16 = [_]u16{WindowSettings.height / 2},
+    modes: [N]EntityMode = [_]EntityMode{.{ .first_guy = FirstGuyMode.NONE }},
 
-    textures: [game_assets.len]*SDL.SDL_Texture = undefined,
+    fn init() Entities {
+        return Entities{ .X = 0 };
+    }
+};
+
+const CharacterMode = enum {
+    NONE,
+    DEAD,
+    STANDING,
+    RUNNING,
+    JUMPING,
+};
+
+const ObjectMode = enum {
+    NONE,
+    NORMAL,
+    BREAKING,
+    BROKEN,
+    BALLISTIC,
+};
+
+const FirstGuyMode = enum {
+    NONE,
+    DEAD,
+    STANDING,
+    RUNNING,
+    JUMPING,
+};
+
+const EntityMode = union(enum) {
+    first_guy: FirstGuyMode,
+    character: CharacterMode,
+    object: ObjectMode,
+};
+
+const ModeIdError = error{
+    MissingMode,
+};
+
+// I want to do this with a utils.StaticMap later
+// so I can make a character select screen that maps asset groups to
+// character types.
+fn EntityModeToAssetID(mode: EntityMode) ModeIdError!ID {
+    switch (mode) {
+        .first_guy => |first_guy_mode| switch (first_guy_mode) {
+            .NONE => return ID.FIRST_GUY,
+            .DEAD => return ID.FIRST_GUY,
+            .STANDING => return ID.FIRST_GUY,
+            .RUNNING => return ID.FIRST_GUY,
+            .JUMPING => return ID.FIRST_GUY,
+            // else => return error{},
+        },
+        .object => |obj_mode| switch (obj_mode) {
+            .NONE => {},
+            .NORMAL => {},
+            .BREAKING => {},
+            .BROKEN => {},
+            .BALLISTIC => {},
+            // else => return error{},
+        },
+        else => return ModeIdError.MissingMode,
+    }
+    return ModeIdError.MissingMode;
+}
+
+pub const Renderer = struct {
+    textures: Textures = undefined,
     renderer: *SDL.SDL_Renderer = undefined,
     window: *SDL.SDL_Window = undefined,
     num_textures: u8 = undefined,
@@ -65,43 +150,64 @@ pub const Renderer = struct {
             utils.sdlPanic();
         }
 
-        self.num_textures = game_assets.len;
         self.load_textures(&game_assets) catch |err| std.debug.panic("Error: {any}", .{err});
 
-        for (0..self.textures.len) |i| {
-            if (SDL.SDL_SetTextureBlendMode(self.textures[i], SDL.SDL_BLENDMODE_BLEND) < 0) {
+        // NOTE: This will fail if the map is not full
+        for (0..self.textures.map.things.len) |i| {
+            if (SDL.SDL_SetTextureBlendMode(self.textures.map.things[i].ptr, SDL.SDL_BLENDMODE_BLEND) < 0) {
                 utils.sdlPanic();
             }
         }
-        self.render(); // this call is necessary
+        // self.render() catch |err| std.debug.panic("Error: {any}", .{err}); // this call is necessary
 
         return self;
     }
 
-    fn deinit(self: *Renderer) void {
-        for (.textures) |texture| SDL.SDL_DestroyTexture(texture);
+    pub fn deinit(self: *Renderer) void {
+        for (self.textures.map.things) |tex| SDL.SDL_DestroyTexture(tex.ptr);
         _ = SDL.SDL_DestroyRenderer(self.renderer);
         SDL.SDL_DestroyWindow(self.window);
         SDL.SDL_Quit();
     }
 
-    fn load_textures(self: *Renderer, comptime assets: []const []const u8) ReadError!void {
+    // Read .png files to GPU texture buffers and store their pointers.
+    fn load_textures(self: *Renderer, comptime assets: []const Asset) !void {
         const format = SDL.SDL_PIXELFORMAT_ABGR8888;
         const access_mode = SDL.SDL_TEXTUREACCESS_STREAMING;
 
-        for (assets, 0..self.num_textures) |path, i| {
-            const img = try readPng(@as([*:0]const u8, @ptrCast(path)), png.PNG_FORMAT_RGBA);
-            defer image.free(); // TODO: free
-            image = img;
+        for (assets) |asset| {
+            const path = @as([*:0]const u8, @ptrCast(asset.path));
+            const image = try readPng(path, png.PNG_FORMAT_RGBA);
+            defer image.free();
 
-            self.textures[i] = SDL.SDL_CreateTexture(self.renderer, format, access_mode, image.width, image.height) orelse utils.sdlPanic();
+            try self.textures.map.insert(
+                asset.id,
+                .{
+                    .ptr = SDL.SDL_CreateTexture(
+                        self.renderer,
+                        format,
+                        access_mode,
+                        image.width,
+                        image.height,
+                    ) orelse utils.sdlPanic(),
+                    .width = image.width,
+                    .height = image.height,
+                },
+                false,
+            );
+            // self.textures.sdl_textures[i] = SDL.SDL_CreateTexture(self.renderer, format, access_mode, image.width, image.height,) orelse utils.sdlPanic();
 
             var pixels: ?*c_int = undefined;
             var stride: c_int = undefined;
             const pixels_ptr: [*]?*anyopaque = @ptrCast(@alignCast(@constCast(&pixels)));
             const stride_ptr: [*]c_int = @ptrCast(@alignCast(@constCast(&stride)));
 
-            utils.assert(SDL.SDL_LockTexture(self.textures[i], null, pixels_ptr, stride_ptr) == 0, "SDL_LockTexture() failed.");
+            utils.assert(SDL.SDL_LockTexture(
+                (try self.textures.map.lookup(asset.id, false)).ptr,
+                null,
+                pixels_ptr,
+                stride_ptr,
+            ) == 0, "SDL_LockTexture() failed.");
 
             const stride_gpu = toUsizeChecked(stride);
             const stride_cpu = toUsizeChecked(image.stride);
@@ -112,22 +218,21 @@ pub const Renderer = struct {
 
             copyPixels(start_addr_cpu, start_addr_gpu, stride_cpu, stride_gpu, width, height);
 
-            SDL.SDL_UnlockTexture(self.textures[i]);
+            SDL.SDL_UnlockTexture(
+                (try self.textures.map.lookup(asset.id, false)).ptr,
+            );
         }
     }
 
-    // TODO: I need to think about whether I want the SimulationState to contain information
-    // about rendering in terms of who is offscreen or what, or maybe I just want a separate
-    // rendering information struct.
+    pub fn render(self: *Renderer, entities: *Entities) !void {
+        fillWithColor(self.renderer); // TODO: remove when I have background
 
-    pub fn render(self: *Renderer) void {
-        const src_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 0, .y = 0, .w = image.width, .h = image.height });
-        const dst_rect: *SDL.SDL_Rect = @constCast(&.{ .x = 1920 / 2 - 49, .y = 1080 / 2 - 49, .w = image.width, .h = image.height });
-        // const dst_rect_2: *SDL.SDL_Rect = @constCast(&.{ .x = 500 / 2 - 49, .y = 300 / 2 - 49, .w = image.width, .h = image.height });
+        for (entities.X, entities.Y, entities.modes) |x, y, mode| {
+            const id: ID = try EntityModeToAssetID(mode);
+            const tex = try self.textures.map.lookup(id, false);
+            _ = SDL.SDL_RenderCopy(self.renderer, tex.ptr, null, &SDL.SDL_Rect{ .x = x, .y = y, .w = tex.width, .h = tex.height });
+        }
 
-        fillWithColor(self.renderer);
-        _ = SDL.SDL_RenderCopy(self.renderer, self.textures[0], src_rect, dst_rect);
-        // _ = SDL.SDL_RenderCopy(self.renderer, self.textures[1], src_rect, dst_rect_2);
         SDL.SDL_RenderPresent(self.renderer);
     }
 };
