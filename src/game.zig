@@ -1,10 +1,8 @@
 /// Gameplay logic
 const std = @import("std");
 const utils = @import("utils.zig");
-pub const Renderer = @import("render.zig").Renderer;
-const Entities = @import("render.zig").Entities;
-const SimulatorState = @import("physics.zig").SimulatorState;
 const hidapi = @cImport(@cInclude("hidapi.h"));
+const stages = @import("stages.zig");
 
 const SDL_PollEvent = @import("sdl2").SDL_PollEvent;
 const SDL_Event = @import("sdl2").SDL_Event;
@@ -15,14 +13,26 @@ const SDLK_q = @import("sdl2").SDLK_q;
 const SDL_Renderer = @import("sdl2").SDL_Renderer;
 const SDL_Window = @import("sdl2").SDL_Window;
 
-pub const Game = struct {
-    const max_num_players = 4;
+pub const Renderer = @import("render.zig").Renderer;
+pub const Entities = @import("render.zig").Entities;
+pub const SimulatorState = @import("physics.zig").SimulatorState;
 
+const vec_length = @import("physics.zig").vec_length;
+const Vec = @import("physics.zig").Vec;
+const float = @import("physics.zig").float;
+
+pub const max_num_players = 4;
+
+const timestep_s: f16 = 1.0 / 60.0;
+const timestep_ns: u64 = 1.667e+7;
+
+pub const Game = struct {
     player_actions: [max_num_players]InputHandler.PlayerAction = undefined,
     input_handler: *InputHandler,
     renderer: *Renderer,
-    entities: Entities,
-    sim_state: SimulatorState,
+    entities: *Entities,
+    sim_state: *SimulatorState,
+    stage: *const @TypeOf(stages.s0), // make pointer to tuple of maps
     timer: std.time.Timer,
     num_players: u8,
 
@@ -30,12 +40,20 @@ pub const Game = struct {
         comptime num_players: u8,
         input_handler: *InputHandler,
         renderer: *Renderer,
+        entities: *Entities,
+        sim_state: *SimulatorState,
     ) Game {
+        var indices = comptime utils.range(u8, 0, num_players);
+        const seed = @as(u64, @intCast(std.time.microTimestamp()));
+        var prng = std.Random.DefaultPrng.init(seed);
+        prng.random().shuffle(u8, &indices);
+
         return Game{
             .input_handler = input_handler.init(num_players),
             .renderer = renderer.init(),
-            .entities = Entities{},
-            .sim_state = SimulatorState{ .num_characters = num_players },
+            .entities = entities.init(num_players, &stages.s0, indices),
+            .sim_state = sim_state.init(num_players, &stages.s0, indices),
+            .stage = &stages.s0,
             .timer = std.time.Timer.start() catch unreachable,
             .num_players = num_players,
         };
@@ -47,28 +65,76 @@ pub const Game = struct {
 
     pub fn run(self: *Game) void {
         var stop = false;
-        while (!stop) {
+        while (!stop) { // TODO: make outer loop with stage selection
+            self.timer.reset();
+
+            // Always read player inputs
+            while (self.timer.read() < timestep_ns) {
+                const reports = self.input_handler.read_input();
+                for (reports, 0..self.num_players) |report, i| {
+                    self.player_actions[i] = InputHandler.action(report);
+                }
+            }
             stop = self.step();
         }
     }
 
     fn step(self: *Game) bool {
-        const reports = self.input_handler.read_input();
-        for (reports, 0..self.num_players) |report, i| {
-            self.player_actions[i] = InputHandler.action(report);
-        }
+        // const reports = self.input_handler.read_input();
+        // for (reports, 0..self.num_players) |report, i| {
+        //     self.player_actions[i] = InputHandler.action(report);
+        // }
         const stop = handle_sdl_events();
 
         // simulate
-        switch (self.player_actions[0].x_dir) {
-            .RIGHT => self.entities.X[0] += 1,
-            .LEFT => self.entities.X[0] -= 1,
-            else => {},
-        }
+        //
+        // I want:
+        //  dynamic friction from surfaces (caps velocity)
+        //  dynamic friction from air (caps velocity)
+        //  acceleration based movement inputs
+        //  ? acceleration based projectiles or constant velocity
+        //  ? normal force calculation or just velocity zeroing
+        //  conversion between screen pixel space and 2D euclidean space
+        //
+        //
 
-        self.renderer.render(&self.entities) catch unreachable;
+        self.sim_state.physics_state.ddY = @splat(-9.81);
+        self.handle_collisions();
+
+        self.sim_state.physics_state = SimulatorState.newtonianMotion(timestep_s, self.sim_state.physics_state);
+        self.entities.updateEntityPositions(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
+
+        self.renderer.render(self.entities) catch unreachable;
 
         return stop;
+    }
+
+    fn handle_collisions(self: *Game) void {
+        const X = self.sim_state.physics_state.X;
+        const Y = self.sim_state.physics_state.Y;
+
+        for (self.stage.geometry) |shape| {
+            switch (shape) {
+                .rect => |rectangle| {
+                    const left: Vec = @splat(rectangle.x_tl);
+                    const right: Vec = @splat(rectangle.x_br);
+                    const top: Vec = @splat(rectangle.y_tl);
+                    const bottom: Vec = @splat(rectangle.y_br);
+
+                    // const temp = (left <= X) == (X <= right);
+                    const collisions: @Vector(vec_length, bool) = ((left <= X) == (X <= right)) == ((bottom <= Y) == (Y <= top));
+                    const true_vec: @Vector(vec_length, bool) = @splat(true);
+
+                    const multiplier: @Vector(vec_length, float) = @floatFromInt(@intFromBool(collisions != true_vec));
+
+                    self.sim_state.physics_state.dX *= multiplier;
+                    self.sim_state.physics_state.dY *= multiplier;
+                    self.sim_state.physics_state.ddX *= multiplier;
+                    self.sim_state.physics_state.ddY *= multiplier;
+                },
+                else => {},
+            }
+        }
     }
 
     fn handle_sdl_events() bool {

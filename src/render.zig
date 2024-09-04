@@ -2,6 +2,11 @@
 const std = @import("std");
 const SDL = @import("sdl2");
 const utils = @import("utils.zig");
+const stages = @import("stages.zig");
+const Vec = @import("physics.zig").Vec;
+const VecU16 = @import("physics.zig").VecU16;
+const float = @import("physics.zig").float;
+const vec_length = @import("physics.zig").vec_length;
 const png = @cImport(@cInclude("png.h"));
 const c = @cImport({
     @cInclude("stdlib.h");
@@ -16,6 +21,17 @@ const WindowSettings = struct {
     const y0 = SDL.SDL_WINDOWPOS_CENTERED;
     const sdl_flags = SDL.SDL_WINDOW_SHOWN; // | SDL.SDL_WINDOW_BORDERLESS;
 };
+
+const pixels_per_meter: float = @as(float, @floatFromInt(WindowSettings.width)) / stages.stage_width_meters;
+
+// We assume x is on the screen, check at callsite.
+fn toPixelX(x: float) u16 {
+    return @intFromFloat(x * pixels_per_meter + @as(float, @floatFromInt(WindowSettings.width / 2)));
+}
+// We assume y is on the screen, check at callsite.
+fn toPixelY(y: float) u16 {
+    return @intFromFloat(@as(float, @floatFromInt(WindowSettings.height / 2)) - y * pixels_per_meter);
+}
 
 const Image = struct {
     buffer: ?*anyopaque,
@@ -35,6 +51,7 @@ const Asset = struct {
 };
 
 const ID = enum {
+    NONE,
     FIRST_GUY,
 };
 
@@ -55,13 +72,36 @@ const Textures = struct {
 const ReadError = error{ OutOfMemory, FailedImageRead };
 
 pub const Entities = struct {
-    const N = 1;
-    X: [N]u16 = [_]u16{WindowSettings.width / 2},
-    Y: [N]u16 = [_]u16{WindowSettings.height / 2},
-    modes: [N]EntityMode = [_]EntityMode{.{ .first_guy = FirstGuyMode.NONE }},
+    const inactive_barrier = 42069; // Some number larger than the screen resolution width. Instead of using i32.
+    const max_entities = 1024;
+    var pos_memory: [2 * max_entities]u16 = .{inactive_barrier} ** (2 * max_entities);
+    var mode_memory: [max_entities]EntityMode = .{.{ .first_guy = FirstGuyMode.NONE }} ** max_entities;
 
-    fn init() Entities {
-        return Entities{ .X = 0 };
+    X: []u16 = @This().pos_memory[0..max_entities],
+    Y: []u16 = @This().pos_memory[max_entities .. 2 * max_entities],
+    modes: []EntityMode = @This().mode_memory[0..max_entities], //[_]EntityMode{.{ .first_guy = FirstGuyMode.NONE }},
+
+    pub fn init(
+        self: *Entities,
+        comptime num_players: u8,
+        stage: *const @TypeOf(stages.s0),
+        shuffled_indices: [num_players]u8,
+    ) *Entities {
+        for (shuffled_indices, 0..num_players) |idx, i| {
+            self.X[i] = toPixelX(stage.starting_positions[idx].x);
+            self.Y[i] = toPixelY(stage.starting_positions[idx].y);
+            self.modes[i] = .{ .first_guy = .STANDING };
+        }
+
+        return self;
+    }
+
+    pub fn updateEntityPositions(self: *Entities, X: Vec, Y: Vec) void {
+        // TODO: can do this as a vector operation potentially
+        for (0..vec_length) |i| {
+            self.X[i] = toPixelX(X[i]);
+            self.Y[i] = toPixelY(Y[i]);
+        }
     }
 };
 
@@ -105,7 +145,7 @@ const ModeIdError = error{
 fn EntityModeToAssetID(mode: EntityMode) ModeIdError!ID {
     switch (mode) {
         .first_guy => |first_guy_mode| switch (first_guy_mode) {
-            .NONE => return ID.FIRST_GUY,
+            .NONE => return ID.NONE,
             .DEAD => return ID.FIRST_GUY,
             .STANDING => return ID.FIRST_GUY,
             .RUNNING => return ID.FIRST_GUY,
@@ -113,7 +153,7 @@ fn EntityModeToAssetID(mode: EntityMode) ModeIdError!ID {
             // else => return error{},
         },
         .object => |obj_mode| switch (obj_mode) {
-            .NONE => {},
+            .NONE => return ID.NONE,
             .NORMAL => {},
             .BREAKING => {},
             .BROKEN => {},
@@ -229,8 +269,10 @@ pub const Renderer = struct {
 
         for (entities.X, entities.Y, entities.modes) |x, y, mode| {
             const id: ID = try EntityModeToAssetID(mode);
+            if (id == .NONE) continue;
+
             const tex = try self.textures.map.lookup(id, false);
-            _ = SDL.SDL_RenderCopy(self.renderer, tex.ptr, null, &SDL.SDL_Rect{ .x = x, .y = y, .w = tex.width, .h = tex.height });
+            _ = SDL.SDL_RenderCopy(self.renderer, tex.ptr, null, &SDL.SDL_Rect{ .x = x - @divExact(tex.width, 2), .y = y - @divExact(tex.height, 2), .w = tex.width, .h = tex.height });
         }
 
         SDL.SDL_RenderPresent(self.renderer);
