@@ -22,7 +22,7 @@ const WindowSettings = struct {
     const sdl_flags = SDL.SDL_WINDOW_SHOWN; // | SDL.SDL_WINDOW_BORDERLESS;
 };
 
-const pixels_per_meter: float = @as(float, @floatFromInt(WindowSettings.width)) / stages.stage_width_meters;
+pub const pixels_per_meter: float = @as(float, @floatFromInt(WindowSettings.width)) / stages.stage_width_meters;
 
 // We assume x is on the screen, check at callsite.
 fn toPixelX(x: float) u16 {

@@ -14,6 +14,7 @@ const SDL_Renderer = @import("sdl2").SDL_Renderer;
 const SDL_Window = @import("sdl2").SDL_Window;
 
 pub const Renderer = @import("render.zig").Renderer;
+pub const pixels_per_meter = @import("render.zig").pixels_per_meter;
 pub const Entities = @import("render.zig").Entities;
 pub const SimulatorState = @import("physics.zig").SimulatorState;
 
@@ -65,26 +66,26 @@ pub const Game = struct {
 
     pub fn run(self: *Game) void {
         var stop = false;
+
         while (!stop) { // TODO: make outer loop with stage selection
             self.timer.reset();
+            stop = self.step();
 
             // Always read player inputs
-            while (self.timer.read() < timestep_ns) {
+            var atleast_once = true;
+            while (self.timer.read() < timestep_ns or atleast_once) {
+                atleast_once = false;
                 const reports = self.input_handler.read_input();
                 for (reports, 0..self.num_players) |report, i| {
                     self.player_actions[i] = InputHandler.action(report);
                 }
             }
-            stop = self.step();
         }
     }
 
     fn step(self: *Game) bool {
-        // const reports = self.input_handler.read_input();
-        // for (reports, 0..self.num_players) |report, i| {
-        //     self.player_actions[i] = InputHandler.action(report);
-        // }
         const stop = handle_sdl_events();
+        self.sim_state.physics_state = SimulatorState.newtonianMotion(timestep_s, self.sim_state.physics_state);
 
         // simulate
         //
@@ -98,43 +99,115 @@ pub const Game = struct {
         //
         //
 
-        self.sim_state.physics_state.ddY = @splat(-9.81);
-        self.handle_collisions();
+        const collisions, const min_displ_x, const min_displ_y = self.detect_collisions();
+        const colliding: @Vector(vec_length, float) = @floatFromInt(@intFromBool(collisions));
 
-        self.sim_state.physics_state = SimulatorState.newtonianMotion(timestep_s, self.sim_state.physics_state);
+        const true_vec: @Vector(vec_length, bool) = @splat(true);
+        const zero: Vec = @splat(0);
+
+        const free_motion: @Vector(vec_length, float) = @floatFromInt(@intFromBool(collisions != true_vec));
+
+        const gravity: @Vector(vec_length, float) = @splat(-9.81);
+        const drag_coeff: Vec = @splat(0.01);
+        const elasticity: Vec = @splat(0.2);
+
+        // bounce cutoff
+        const bounce_vel_cutoff: Vec = @splat(3.0);
+        const bounce_x: Vec = @floatFromInt(@intFromBool(@abs(self.sim_state.physics_state.dX) > bounce_vel_cutoff));
+        const bounce_y: Vec = @floatFromInt(@intFromBool(@abs(self.sim_state.physics_state.dY) > bounce_vel_cutoff));
+
+        self.sim_state.physics_state.X += min_displ_x;
+        self.sim_state.physics_state.Y += min_displ_y;
+
+        const dX = self.sim_state.physics_state.dX;
+        const dY = self.sim_state.physics_state.dY;
+
+        self.sim_state.physics_state.dX = colliding * (-elasticity * bounce_x * dX) + free_motion * (dX);
+        self.sim_state.physics_state.dY = colliding * (-elasticity * bounce_y * dY) + free_motion * (dY);
+
+        self.sim_state.physics_state.ddX = colliding * (zero) + free_motion * (-drag_coeff * dX * @abs(dX));
+        self.sim_state.physics_state.ddY = colliding * (zero) + free_motion * (-drag_coeff * dY * @abs(dY) + gravity);
+
+        // self.handle_collisions();
+
         self.entities.updateEntityPositions(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
-
         self.renderer.render(self.entities) catch unreachable;
 
         return stop;
     }
 
-    fn handle_collisions(self: *Game) void {
-        const X = self.sim_state.physics_state.X;
-        const Y = self.sim_state.physics_state.Y;
+    // https://github.com/ziglang/zig/issues/14306
+    fn _or(
+        a: @Vector(vec_length, bool),
+        b: @Vector(vec_length, bool),
+    ) @Vector(vec_length, bool) {
+        return @select(bool, a, a, b);
+    }
+    fn _and(
+        a: @Vector(vec_length, bool),
+        b: @Vector(vec_length, bool),
+    ) @Vector(vec_length, bool) {
+        return @select(bool, a, b, a);
+    }
+
+    fn detect_collisions(self: *Game) struct { @Vector(vec_length, bool), Vec, Vec } {
+        // TODO: replace hardcoded dims with property of objects
+        const hitbox_halfsize: Vec = @splat(50 / pixels_per_meter);
+
+        // NOTE: to begin with, we use rectangular hitboxes.
+        const hitbox_left = self.sim_state.physics_state.X - hitbox_halfsize;
+        const hitbox_right = self.sim_state.physics_state.X + hitbox_halfsize;
+        const hitbox_top = self.sim_state.physics_state.Y + hitbox_halfsize;
+        const hitbox_bottom = self.sim_state.physics_state.Y - hitbox_halfsize;
+
+        var collisions: @Vector(vec_length, bool) = @splat(false);
+        var min_displ_x: Vec = @splat(0);
+        var min_displ_y: Vec = @splat(0);
+
+        // TODO: when there are more shapes, I need to filter based on coarse grid first.
+        // 1. Pre-split geometry into screen grid.
+        // 2. compute the collision detection on a per grid-cell basis.
 
         for (self.stage.geometry) |shape| {
             switch (shape) {
                 .rect => |rectangle| {
-                    const left: Vec = @splat(rectangle.x_tl);
-                    const right: Vec = @splat(rectangle.x_br);
-                    const top: Vec = @splat(rectangle.y_tl);
-                    const bottom: Vec = @splat(rectangle.y_br);
+                    const shape_left: Vec = @splat(rectangle.x_tl);
+                    const shape_right: Vec = @splat(rectangle.x_br);
+                    const shape_top: Vec = @splat(rectangle.y_tl);
+                    const shape_bottom: Vec = @splat(rectangle.y_br);
 
-                    // const temp = (left <= X) == (X <= right);
-                    const collisions: @Vector(vec_length, bool) = ((left <= X) == (X <= right)) == ((bottom <= Y) == (Y <= top));
-                    const true_vec: @Vector(vec_length, bool) = @splat(true);
+                    const new_collisions = _and(
+                        _and(shape_left < hitbox_right, shape_right > hitbox_left),
+                        _and(shape_top > hitbox_bottom, shape_bottom < hitbox_top),
+                    );
 
-                    const multiplier: @Vector(vec_length, float) = @floatFromInt(@intFromBool(collisions != true_vec));
+                    const colliding: @Vector(vec_length, float) = @floatFromInt(@intFromBool(new_collisions));
 
-                    self.sim_state.physics_state.dX *= multiplier;
-                    self.sim_state.physics_state.dY *= multiplier;
-                    self.sim_state.physics_state.ddX *= multiplier;
-                    self.sim_state.physics_state.ddY *= multiplier;
+                    // Going right -> displace left
+                    const zero: Vec = @splat(0);
+                    const going_left: Vec = @floatFromInt(@intFromBool(self.sim_state.physics_state.dX < zero));
+                    const going_right: Vec = @floatFromInt(@intFromBool(self.sim_state.physics_state.dX > zero));
+                    const going_down: Vec = @floatFromInt(@intFromBool(self.sim_state.physics_state.dY < zero));
+                    const going_up: Vec = @floatFromInt(@intFromBool(self.sim_state.physics_state.dY > zero));
+
+                    min_displ_x += colliding * (going_left * (shape_right - hitbox_left) + going_right * (shape_left - hitbox_right));
+                    min_displ_y += colliding * (going_down * (shape_top - hitbox_bottom) + going_up * (shape_bottom - hitbox_top));
+                    // utils.print(going_up);
+
+                    collisions = _or(collisions, new_collisions);
                 },
                 else => {},
             }
         }
+
+        return .{ collisions, min_displ_x, min_displ_y };
+    }
+    fn handle_collisions(self: *Game) void {
+        // TODO:
+        // 1. move back to edge of geometry using smallest possible displacement
+        // 2. compute bounce velocity (if we want sliding, we need to consider wall angles)
+        // 3.
+        _ = self;
     }
 
     fn handle_sdl_events() bool {

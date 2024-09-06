@@ -14,6 +14,7 @@ pub const Shape = union(enum) {
 };
 
 pub const stage_width_meters: float = 20;
+pub const stage_height_meters: float = stage_width_meters * (16.0 / 9.0);
 
 pub const Position = struct {
     x: float,
@@ -46,13 +47,15 @@ pub const s0 = Stage(
     0,
     "Flat Earth Theory",
     .{
-        .{ .x = 0, .y = 2.5 },
+        .{ .x = 0, .y = 0 },
         .{ .x = 0, .y = -2.5 },
         .{ .x = -5, .y = 0 },
         .{ .x = 5, .y = 0 },
     },
-    1,
+    2,
     .{
         Shape{ .rect = .{ .x_tl = -(stage_width_meters / 2), .y_tl = -3.5, .x_br = (stage_width_meters / 2), .y_br = -4.4 } },
+        Shape{ .rect = .{ .x_tl = -(stage_width_meters / 2), .y_tl = 5.5, .x_br = (stage_width_meters / 2), .y_br = 5.3 } },
+        // Shape{ .rect = .{ .x_tl = -(stage_width_meters / 2), .y_tl = 5.5, .x_br = (stage_width_meters / 2), .y_br = 5.3 } },
     },
 ){};
