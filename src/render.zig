@@ -28,9 +28,22 @@ pub const pixels_per_meter: float = @as(float, @floatFromInt(WindowSettings.widt
 fn toPixelX(x: float) u16 {
     return @intFromFloat(x * pixels_per_meter + @as(float, @floatFromInt(WindowSettings.width / 2)));
 }
+fn vecToPixelX(X: Vec) VecU16 {
+    const ppm: Vec = @splat(pixels_per_meter);
+    const screen_halfwidth: VecU16 = @splat(WindowSettings.width / 2);
+
+    return @intFromFloat(X * ppm + @as(Vec, @floatFromInt(screen_halfwidth)));
+}
+
 // We assume y is on the screen, check at callsite.
 fn toPixelY(y: float) u16 {
     return @intFromFloat(@as(float, @floatFromInt(WindowSettings.height / 2)) - y * pixels_per_meter);
+}
+fn vecToPixelY(Y: Vec) VecU16 {
+    const ppm: Vec = @splat(pixels_per_meter);
+    const screen_halfheight: VecU16 = @splat(WindowSettings.height / 2);
+
+    return @intFromFloat(-Y * ppm + @as(Vec, @floatFromInt(screen_halfheight)));
 }
 
 const Image = struct {
@@ -72,14 +85,14 @@ const Textures = struct {
 const ReadError = error{ OutOfMemory, FailedImageRead };
 
 pub const Entities = struct {
-    const inactive_barrier = 42069; // Some number larger than the screen resolution width. Instead of using i32.
     const max_entities = 1024;
-    var pos_memory: [2 * max_entities]u16 = .{inactive_barrier} ** (2 * max_entities);
-    var mode_memory: [max_entities]EntityMode = .{.{ .first_guy = FirstGuyMode.NONE }} ** max_entities;
+    const num_dynamic_entities = vec_length;
+    // var pos_memory: [2 * max_entities]u16 = .{inactive_barrier} ** (2 * max_entities);
+    // var mode_memory: [max_entities]EntityMode = .{.{ .first_guy = FirstGuyMode.NONE }} ** max_entities;
 
-    X: []u16 = @This().pos_memory[0..max_entities],
-    Y: []u16 = @This().pos_memory[max_entities .. 2 * max_entities],
-    modes: []EntityMode = @This().mode_memory[0..max_entities], //[_]EntityMode{.{ .first_guy = FirstGuyMode.NONE }},
+    X_dynamic: VecU16 = @splat(0),
+    Y_dynamic: VecU16 = @splat(0),
+    modes_dynamic: [num_dynamic_entities]EntityMode = .{.{ .common = CommonMode.NONE }} ** num_dynamic_entities,
 
     pub fn init(
         self: *Entities,
@@ -88,48 +101,50 @@ pub const Entities = struct {
         shuffled_indices: [num_players]u8,
     ) *Entities {
         for (shuffled_indices, 0..num_players) |idx, i| {
-            self.X[i] = toPixelX(stage.starting_positions[idx].x);
-            self.Y[i] = toPixelY(stage.starting_positions[idx].y);
-            self.modes[i] = .{ .first_guy = .STANDING };
+            self.X_dynamic[i] = toPixelX(stage.starting_positions[idx].x);
+            self.Y_dynamic[i] = toPixelY(stage.starting_positions[idx].y);
+            self.modes_dynamic[i] = .{ .first_guy = .STANDING };
         }
 
         return self;
     }
 
-    pub fn updateEntityPositions(self: *Entities, X: Vec, Y: Vec) void {
+    pub fn updateDynamicEntities(self: *Entities, X: Vec, Y: Vec) void {
         // TODO: can do this as a vector operation potentially
-        for (0..vec_length) |i| {
-            self.X[i] = toPixelX(X[i]);
-            self.Y[i] = toPixelY(Y[i]);
-        }
+        self.X_dynamic = vecToPixelX(X);
+        self.Y_dynamic = vecToPixelY(Y);
     }
 };
 
-const CharacterMode = enum {
+const ModeBackingInt = u16;
+
+const CommonMode = enum(ModeBackingInt) {
     NONE,
+};
+
+const CharacterMode = enum(ModeBackingInt) {
     DEAD,
     STANDING,
     RUNNING,
     JUMPING,
 };
 
-const ObjectMode = enum {
-    NONE,
+const ObjectMode = enum(ModeBackingInt) {
     NORMAL,
     BREAKING,
     BROKEN,
     BALLISTIC,
 };
 
-const FirstGuyMode = enum {
-    NONE,
+const FirstGuyMode = enum(ModeBackingInt) {
     DEAD,
     STANDING,
     RUNNING,
     JUMPING,
 };
 
-const EntityMode = union(enum) {
+const EntityMode = union(enum(ModeBackingInt)) {
+    common: CommonMode,
     first_guy: FirstGuyMode,
     character: CharacterMode,
     object: ObjectMode,
@@ -144,25 +159,25 @@ const ModeIdError = error{
 // character types.
 fn EntityModeToAssetID(mode: EntityMode) ModeIdError!ID {
     switch (mode) {
-        .first_guy => |first_guy_mode| switch (first_guy_mode) {
+        .common => |common_mode| switch (common_mode) {
             .NONE => return ID.NONE,
-            .DEAD => return ID.FIRST_GUY,
+        },
+        .first_guy => |first_guy_mode| switch (first_guy_mode) {
+            .DEAD => return ModeIdError.MissingMode,
             .STANDING => return ID.FIRST_GUY,
-            .RUNNING => return ID.FIRST_GUY,
-            .JUMPING => return ID.FIRST_GUY,
-            // else => return error{},
+            .RUNNING => return ModeIdError.MissingMode,
+            .JUMPING => return ModeIdError.MissingMode,
         },
         .object => |obj_mode| switch (obj_mode) {
-            .NONE => return ID.NONE,
-            .NORMAL => {},
-            .BREAKING => {},
-            .BROKEN => {},
-            .BALLISTIC => {},
-            // else => return error{},
+            .NORMAL => return ModeIdError.MissingMode,
+            .BREAKING => return ModeIdError.MissingMode,
+            .BROKEN => return ModeIdError.MissingMode,
+            .BALLISTIC => return ModeIdError.MissingMode,
         },
         else => return ModeIdError.MissingMode,
     }
-    return ModeIdError.MissingMode;
+    unreachable;
+    // return ModeIdError.MissingMode;
 }
 
 pub const Renderer = struct {
@@ -198,7 +213,6 @@ pub const Renderer = struct {
                 utils.sdlPanic();
             }
         }
-        // self.render() catch |err| std.debug.panic("Error: {any}", .{err}); // this call is necessary
 
         return self;
     }
@@ -267,7 +281,12 @@ pub const Renderer = struct {
     pub fn render(self: *Renderer, entities: *Entities) !void {
         fillWithColor(self.renderer); // TODO: remove when I have background
 
-        for (entities.X, entities.Y, entities.modes) |x, y, mode| {
+        const N = Entities.num_dynamic_entities;
+        for (
+            @as([N]u16, entities.X_dynamic),
+            @as([N]u16, entities.Y_dynamic),
+            entities.modes_dynamic,
+        ) |x, y, mode| {
             const id: ID = try EntityModeToAssetID(mode);
             if (id == .NONE) continue;
 

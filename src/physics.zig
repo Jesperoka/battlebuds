@@ -11,6 +11,9 @@ pub const float = f16;
 pub const vec_length = 32;
 pub const Vec = @Vector(vec_length, float);
 pub const VecU16 = @Vector(vec_length, u16);
+// TODO: make more of these vectors that are used frequently,
+// either here or where they are used most often.
+// Most importantly the bool vector and like @splat(1) and @splat(0).
 
 const PhysicsState = struct {
     X: Vec = @splat(0),

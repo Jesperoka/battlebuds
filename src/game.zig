@@ -130,7 +130,7 @@ pub const Game = struct {
 
         // self.handle_collisions();
 
-        self.entities.updateEntityPositions(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
+        self.entities.updateDynamicEntities(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
         self.renderer.render(self.entities) catch unreachable;
 
         return stop;
