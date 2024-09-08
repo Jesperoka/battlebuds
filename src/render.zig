@@ -110,7 +110,6 @@ pub const Entities = struct {
     }
 
     pub fn updateDynamicEntities(self: *Entities, X: Vec, Y: Vec) void {
-        // TODO: can do this as a vector operation potentially
         self.X_dynamic = vecToPixelX(X);
         self.Y_dynamic = vecToPixelY(Y);
     }

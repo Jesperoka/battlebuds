@@ -6,7 +6,7 @@ const stages = @import("stages.zig");
 const time = std.time;
 
 // time.Timer
-pub const float = f16;
+pub const float = f32;
 
 pub const vec_length = 32;
 pub const Vec = @Vector(vec_length, float);

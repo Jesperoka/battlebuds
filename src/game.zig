@@ -24,7 +24,7 @@ const float = @import("physics.zig").float;
 
 pub const max_num_players = 4;
 
-const timestep_s: f16 = 1.0 / 60.0;
+const timestep_s: float = 1.0 / 60.0;
 const timestep_ns: u64 = 1.667e+7;
 
 pub const Game = struct {
@@ -85,51 +85,66 @@ pub const Game = struct {
 
     fn step(self: *Game) bool {
         const stop = handle_sdl_events();
+
+        // PLAYER INPUT
+        const jump_velocity: float = 9.9;
+        const move_acceleration: float = 129.9;
+        const move_velocity: float = 4.9;
+        for (0..self.num_players) |player| {
+
+            // TODO: only allow jumping again after having made contact with surface
+
+            const jump: float = if (self.player_actions[player].jump) jump_velocity else self.sim_state.physics_state.dY[player];
+            const move_vel: float, const move_acc: float = switch (self.player_actions[player].x_dir) {
+                .RIGHT => .{ move_velocity, move_acceleration },
+                .LEFT => .{ -move_velocity, -move_acceleration },
+                .NONE => .{ self.sim_state.physics_state.dX[player], 0 },
+            };
+            self.sim_state.physics_state.dY[player] = jump;
+            self.sim_state.physics_state.dX[player] = move_vel;
+            self.sim_state.physics_state.ddX[player] += move_acc;
+        }
+
         self.sim_state.physics_state = SimulatorState.newtonianMotion(timestep_s, self.sim_state.physics_state);
 
-        // simulate
-        //
-        // I want:
-        //  dynamic friction from surfaces (caps velocity)
-        //  dynamic friction from air (caps velocity)
-        //  acceleration based movement inputs
-        //  ? acceleration based projectiles or constant velocity
-        //  ? normal force calculation or just velocity zeroing
-        //  conversion between screen pixel space and 2D euclidean space
-        //
-        //
-
         const collisions, const min_displ_x, const min_displ_y = self.detect_collisions();
-        const colliding: @Vector(vec_length, float) = @floatFromInt(@intFromBool(collisions));
+        const colliding: Vec = @floatFromInt(@intFromBool(collisions));
 
-        const true_vec: @Vector(vec_length, bool) = @splat(true);
+        // GAME PHYSICS
         const zero: Vec = @splat(0);
+        const one: Vec = @splat(1);
+        const free_motion: Vec = one - colliding;
 
-        const free_motion: @Vector(vec_length, float) = @floatFromInt(@intFromBool(collisions != true_vec));
-
-        const gravity: @Vector(vec_length, float) = @splat(-9.81);
-        const drag_coeff: Vec = @splat(0.01);
-        const elasticity: Vec = @splat(0.2);
-
-        // bounce cutoff
-        const bounce_vel_cutoff: Vec = @splat(3.0);
-        const bounce_x: Vec = @floatFromInt(@intFromBool(@abs(self.sim_state.physics_state.dX) > bounce_vel_cutoff));
-        const bounce_y: Vec = @floatFromInt(@intFromBool(@abs(self.sim_state.physics_state.dY) > bounce_vel_cutoff));
-
-        self.sim_state.physics_state.X += min_displ_x;
-        self.sim_state.physics_state.Y += min_displ_y;
+        const gravity: @Vector(vec_length, float) = @splat(-50.81);
+        const friction_coeff: Vec = @splat(10.0);
+        const drag_coeff: Vec = @splat(0.2);
+        const elasticity: Vec = @splat(0.3);
 
         const dX = self.sim_state.physics_state.dX;
         const dY = self.sim_state.physics_state.dY;
 
-        self.sim_state.physics_state.dX = colliding * (-elasticity * bounce_x * dX) + free_motion * (dX);
-        self.sim_state.physics_state.dY = colliding * (-elasticity * bounce_y * dY) + free_motion * (dY);
+        const bounce_vel_cutoff: Vec = @splat(10.0);
+        const bounce_x: Vec = @floatFromInt(@intFromBool(@abs(dX) > bounce_vel_cutoff));
+        const bounce_y: Vec = @floatFromInt(@intFromBool(@abs(dY) > bounce_vel_cutoff));
+        const bounce_dX: Vec = @select(float, min_displ_x != zero, -dX, zero);
+        const bounce_dY: Vec = @select(float, min_displ_y != zero, -dY, zero);
 
-        self.sim_state.physics_state.ddX = colliding * (zero) + free_motion * (-drag_coeff * dX * @abs(dX));
-        self.sim_state.physics_state.ddY = colliding * (zero) + free_motion * (-drag_coeff * dY * @abs(dY) + gravity);
+        const glide_vel_cutoff: Vec = @splat(1.0);
+        const glide_x: Vec = @floatFromInt(@intFromBool(@abs(dX) > glide_vel_cutoff));
+        const glide_y: Vec = @floatFromInt(@intFromBool(@abs(dY) > glide_vel_cutoff));
+        const preserved_dX: Vec = @select(float, min_displ_y != zero, dX, zero);
+        const preserved_dY: Vec = @select(float, min_displ_x != zero, dY, zero);
 
-        // self.handle_collisions();
+        self.sim_state.physics_state.X += min_displ_x;
+        self.sim_state.physics_state.Y += min_displ_y;
 
+        self.sim_state.physics_state.dX = colliding * (bounce_x * elasticity * bounce_dX + glide_x * preserved_dX) + free_motion * (dX);
+        self.sim_state.physics_state.dY = colliding * (bounce_y * elasticity * bounce_dY + glide_y * preserved_dY) + free_motion * (dY);
+
+        self.sim_state.physics_state.ddX = colliding * (-friction_coeff * preserved_dX) + free_motion * (-drag_coeff * dX * @abs(dX));
+        self.sim_state.physics_state.ddY = colliding * (-friction_coeff * preserved_dY) + free_motion * (-drag_coeff * dY * @abs(dY) + gravity);
+
+        // RENDERING
         self.entities.updateDynamicEntities(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
         self.renderer.render(self.entities) catch unreachable;
 
@@ -160,6 +175,9 @@ pub const Game = struct {
         const hitbox_top = self.sim_state.physics_state.Y + hitbox_halfsize;
         const hitbox_bottom = self.sim_state.physics_state.Y - hitbox_halfsize;
 
+        const dX = self.sim_state.physics_state.dX;
+        const dY = self.sim_state.physics_state.dY;
+
         var collisions: @Vector(vec_length, bool) = @splat(false);
         var min_displ_x: Vec = @splat(0);
         var min_displ_y: Vec = @splat(0);
@@ -171,6 +189,10 @@ pub const Game = struct {
         for (self.stage.geometry) |shape| {
             switch (shape) {
                 .rect => |rectangle| {
+                    // TODO: debug corner glitch through walls
+                    //
+                    // IDEA: just embed the collision direction into the shapes
+
                     const shape_left: Vec = @splat(rectangle.x_tl);
                     const shape_right: Vec = @splat(rectangle.x_br);
                     const shape_top: Vec = @splat(rectangle.y_tl);
@@ -180,19 +202,21 @@ pub const Game = struct {
                         _and(shape_left < hitbox_right, shape_right > hitbox_left),
                         _and(shape_top > hitbox_bottom, shape_bottom < hitbox_top),
                     );
-
                     const colliding: @Vector(vec_length, float) = @floatFromInt(@intFromBool(new_collisions));
 
-                    // Going right -> displace left
                     const zero: Vec = @splat(0);
-                    const going_left: Vec = @floatFromInt(@intFromBool(self.sim_state.physics_state.dX < zero));
-                    const going_right: Vec = @floatFromInt(@intFromBool(self.sim_state.physics_state.dX > zero));
-                    const going_down: Vec = @floatFromInt(@intFromBool(self.sim_state.physics_state.dY < zero));
-                    const going_up: Vec = @floatFromInt(@intFromBool(self.sim_state.physics_state.dY > zero));
+                    const eps: Vec = @splat(2.0 / pixels_per_meter);
+                    const going_left: Vec = @floatFromInt(@intFromBool(dX < zero));
+                    const going_right: Vec = @floatFromInt(@intFromBool(dX > zero));
+                    const going_down: Vec = @floatFromInt(@intFromBool(dY < zero));
+                    const going_up: Vec = @floatFromInt(@intFromBool(dY > zero));
 
-                    min_displ_x += colliding * (going_left * (shape_right - hitbox_left) + going_right * (shape_left - hitbox_right));
-                    min_displ_y += colliding * (going_down * (shape_top - hitbox_bottom) + going_up * (shape_bottom - hitbox_top));
-                    // utils.print(going_up);
+                    const displ_x = colliding * (going_left * (shape_right - hitbox_left + eps) + going_right * (shape_left - hitbox_right - eps));
+                    const displ_y = colliding * (going_down * (shape_top - hitbox_bottom + eps) + going_up * (shape_bottom - hitbox_top - eps));
+
+                    // This might be too simple to avoid
+                    min_displ_x += @select(float, @abs(displ_x) < @abs(displ_y), displ_x, zero);
+                    min_displ_y += @select(float, @abs(displ_y) <= @abs(displ_x), displ_y, zero);
 
                     collisions = _or(collisions, new_collisions);
                 },
