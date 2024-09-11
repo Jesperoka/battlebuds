@@ -1,6 +1,7 @@
 const max_num_players = @import("game.zig").max_num_players;
 const float = @import("physics.zig").float;
 const utils = @import("utils.zig");
+const ID = @import("render.zig").ID;
 
 // Convex Polygons.
 // Must have vertices ordered in counterclockwise direction.
@@ -100,6 +101,7 @@ pub const Position = struct {
 pub fn Stage(
     comptime id: u8,
     comptime name: []const u8,
+    comptime background_id: ID,
     comptime starting_positions: [max_num_players]Position,
     comptime num_shapes: comptime_int,
     comptime geometry: [num_shapes]Shape,
@@ -107,15 +109,9 @@ pub fn Stage(
     return struct {
         id: u8 = id,
         name: []const u8 = name,
+        background_id: ID = background_id,
         starting_positions: [max_num_players]Position = starting_positions,
-
         geometry: [num_shapes]Shape = geometry,
-
-        // TODO: add whatever I need for environment collision
-        // i.e. rectangles and other geometry.
-        // I need to make a utility to export a map to a visible format,
-        // so that I can make art for the stage on top of the stage geometry.
-        // Maybe just scale up some ASCII art to the screen resolution.
     };
 }
 
@@ -123,9 +119,16 @@ pub const StageUnion = union(enum) {
     s0: @TypeOf(s0),
 };
 
+// TODO: only call these once before match
 pub fn stageGeometry(i: usize) []const Shape {
     switch (i) {
         0 => return &s0.geometry,
+        else => unreachable,
+    }
+}
+pub fn stageBackground(i: usize) ID {
+    switch (i) {
+        0 => return s0.background_id,
         else => unreachable,
     }
 }
@@ -133,17 +136,22 @@ pub fn stageGeometry(i: usize) []const Shape {
 pub const s0 = Stage(
     0,
     "Flat Earth Theory",
+    ID.SPACE_BACKGROUND,
     .{
         .{ .x = 0, .y = 0 },
         .{ .x = 0, .y = -2.5 },
         .{ .x = -5, .y = 0 },
         .{ .x = 5, .y = 0 },
     },
-    1,
+    2,
     .{
         Shape{ .quad = .{
             .X = .{ -(stage_width_meters / 2), (stage_width_meters / 2), (stage_width_meters / 2), -(stage_width_meters / 2) },
             .Y = .{ -4.8, -4.8, -4.0, -4.0 },
+        } },
+        Shape{ .quad = .{
+            .X = .{ -(stage_width_meters / 2) + 0.5, -(stage_width_meters / 2) + 1.5, -(stage_width_meters / 2) + 1.5, -(stage_width_meters / 2) + 0.5 },
+            .Y = .{ -(stage_height_meters / 2), -(stage_height_meters / 2), (stage_height_meters / 2), (stage_height_meters / 2) },
         } },
     },
 ){};

@@ -63,13 +63,15 @@ const Asset = struct {
     id: ID,
 };
 
-const ID = enum {
+pub const ID = enum {
     NONE,
     FIRST_GUY,
+    SPACE_BACKGROUND,
 };
 
-const game_assets: [1]Asset = .{
+const game_assets: [2]Asset = .{
     .{ .path = "assets/first_guy_big.png", .id = .FIRST_GUY },
+    .{ .path = "assets/SpaceBackground.png", .id = .SPACE_BACKGROUND },
     // "assets/first_guy.png",
 };
 
@@ -180,7 +182,7 @@ fn EntityModeToAssetID(mode: EntityMode) ModeIdError!ID {
 }
 
 pub const Renderer = struct {
-    textures: Textures = undefined,
+    textures: Textures = Textures{},
     renderer: *SDL.SDL_Renderer = undefined,
     window: *SDL.SDL_Window = undefined,
     num_textures: u8 = undefined,
@@ -233,6 +235,7 @@ pub const Renderer = struct {
             const image = try readPng(path, png.PNG_FORMAT_RGBA);
             defer image.free();
 
+            // utils.print(self.textures.map);
             try self.textures.map.insert(
                 asset.id,
                 .{
@@ -278,8 +281,6 @@ pub const Renderer = struct {
     }
 
     pub fn render(self: *Renderer, entities: *Entities) !void {
-        fillWithColor(self.renderer); // TODO: remove when I have background
-
         const N = Entities.num_dynamic_entities;
         for (
             @as([N]u16, entities.X_dynamic),
@@ -290,10 +291,25 @@ pub const Renderer = struct {
             if (id == .NONE) continue;
 
             const tex = try self.textures.map.lookup(id, false);
-            _ = SDL.SDL_RenderCopy(self.renderer, tex.ptr, null, &SDL.SDL_Rect{ .x = x - @divExact(tex.width, 2), .y = y - @divExact(tex.height, 2), .w = tex.width, .h = tex.height });
+            _ = SDL.SDL_RenderCopy(
+                self.renderer,
+                tex.ptr,
+                null,
+                &SDL.SDL_Rect{
+                    .x = x - @divExact(tex.width, 2),
+                    .y = y - @divExact(tex.height, 2),
+                    .w = tex.width,
+                    .h = tex.height,
+                },
+            );
         }
 
         SDL.SDL_RenderPresent(self.renderer);
+    }
+
+    pub fn drawBackground(self: *Renderer, stage: usize) !void {
+        const tex = try self.textures.map.lookup(stages.stageBackground(stage), false);
+        _ = SDL.SDL_RenderCopy(self.renderer, tex.ptr, null, null);
     }
 };
 

@@ -98,7 +98,7 @@ pub const Game = struct {
         // PLAYER INPUT
         const jump_velocity: float = 9.9;
         const move_acceleration: float = 129.9;
-        const move_velocity: float = 4.9;
+        const move_velocity: float = 5.9;
         for (0..self.num_players) |player| {
 
             // TODO: only allow jumping again after having made contact with surface
@@ -120,6 +120,7 @@ pub const Game = struct {
         self.sim_state.gamePhysics();
 
         self.entities.updateDynamicEntities(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
+        self.renderer.drawBackground(self.stage) catch unreachable;
         self.renderer.render(self.entities) catch unreachable;
 
         return stop;

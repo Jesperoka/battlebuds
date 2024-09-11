@@ -280,12 +280,12 @@ pub const SimulatorState = struct {
                     var Y_orths: [hitbox_len + geom_len]Vec = undefined;
 
                     for (x_edges, y_edges, x_verts, y_verts, 0..geom_len) |x_edge, y_edge, x_vert, y_vert, i| {
-                        X_orths[i], Y_orths[i] = vecLeftOrth(@splat(x_edge), @splat(y_edge));
+                        X_orths[i], Y_orths[i] = vecRightOrth(@splat(x_edge), @splat(y_edge));
                         X_corners_static[i] = @splat(x_vert);
                         Y_corners_static[i] = @splat(y_vert);
                     }
                     for (X_edges_dynamic, Y_edges_dynamic, geom_len..geom_len + hitbox_len) |X_edge_dynamic, Y_edge_dynamic, i| {
-                        X_orths[i], Y_orths[i] = vecLeftOrth(X_edge_dynamic, Y_edge_dynamic);
+                        X_orths[i], Y_orths[i] = vecRightOrth(X_edge_dynamic, Y_edge_dynamic);
                     }
 
                     const col, const X_push, const Y_push = separatingAxis(
@@ -298,7 +298,7 @@ pub const SimulatorState = struct {
                     );
                     colliding +%= col;
                     X_minimal_push += X_push;
-                    Y_minimal_push += Y_push;
+                    Y_minimal_push -= Y_push;
                 },
                 // else => unreachable,
             }
