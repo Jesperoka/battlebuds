@@ -166,9 +166,25 @@ There are some proposals that will change this:
 [Result Locations](https://github.com/ziglang/zig/issues/2765)
 [Pinned Structs](https://github.com/ziglang/zig/issues/7769)
 
+### Separating Axis Theorem
+To allow for more shapes than just rectangles and circles I've upgraded the collision detection to use
+the separating axis theorem, implemented with @Vectors for parallellism. This should give me faily good performance,
+but the tradeoff is that making spatial optimizations now becomes a bit tricky, since we check everything against
+everything with SIMD operations, and thus also can't have early exit from the detection loop 
+(could actually sum-reduce the vector to check if everything is not colliding and exit early if so). On the other hand, this mean the performance we
+see is consistent and always worst-case. It should still be possible to implement uniform grid optimizations
+for collision testing, but I doubt it will be necessary.
 
+### Artwork and Music
+After having working collision detection (that I'm happy with), we can now make our first stage,
+and I've gone for a space theme because it's one of the easier to draw. My friend August also offered 
+to make some music for the game, so now it really feels like we're getting somewhere.
 
-
+<div align="center">
+    <img src="assets/SpaceBackground.png" width="550">
+    <br>Space stage background. Made in ProCreate<br><br>
+</div>
+We'll figure out the artstyle as we go. It's been a while since I did any art, so I'll have to re-learn.
 
 # Dependencies:
 - Zig (using 0.14.0)
