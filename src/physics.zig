@@ -55,8 +55,8 @@ const PhysicsState = struct {
     ddX: Vec = @splat(0), // Not used in arithmetic functions below
     ddY: Vec = @splat(0), // Not used in arithmetic functions below
 
-    W: Vec = @splat(50 / ppm), // Not used in arithmetic functions below
-    H: Vec = @splat(50 / ppm), // Not used in arithmetic functions below
+    W: Vec = @splat(100 / ppm), // Not used in arithmetic functions below
+    H: Vec = @splat(100 / ppm), // Not used in arithmetic functions below
 
     fn minus(this: PhysicsState, that: PhysicsState) PhysicsState {
         return .{
@@ -187,6 +187,16 @@ pub const SimulatorState = struct {
         };
     }
 
+    fn pushAway(X_push: Vec, Y_push: Vec, X: Vec, Y: Vec, X_shape: Vec, Y_shape: Vec) struct { Vec, Vec } {
+        const X_displacement = X_shape - X;
+        const Y_displacement = Y_shape - Y;
+        const dot_product = vecDot(X_push, Y_push, X_displacement, Y_displacement);
+        const X_push_flipped = @select(float, dot_product > Zero, -X_push, X_push);
+        const Y_push_flipped = @select(float, dot_product > Zero, -Y_push, Y_push);
+
+        return .{ X_push_flipped, Y_push_flipped };
+    }
+
     fn separatingAxis(
         X_orths: []const Vec,
         Y_orths: []const Vec,
@@ -194,9 +204,9 @@ pub const SimulatorState = struct {
         Y_verts_0: []const Vec,
         X_verts_1: []const Vec,
         Y_verts_1: []const Vec,
-    ) struct { VecU16, Vec, Vec } {
-        var X_push: Vec = @splat(inf);
-        var Y_push: Vec = @splat(inf);
+    ) struct { VecBool, Vec, Vec } {
+        var X_push: Vec = @splat(99999); // If we use inf, we get NaNs unless we filter.
+        var Y_push: Vec = @splat(99999); // If we use inf, we get NaNs unless we filter.
         var separated = False;
 
         for (X_orths, Y_orths) |X_orth, Y_orth| {
@@ -215,9 +225,11 @@ pub const SimulatorState = struct {
                 min1 = @min(min1, P);
                 max1 = @max(max1, P);
             }
-            const eps: Vec = @splat(1.0 / ppm);
+            const eps: Vec = @splat(0.0 / ppm);
             const D_min_proj = @min(max1 - min0, max0 - min1);
-            const O_squared = vecDotSelf(X_orth, Y_orth);
+
+            var O_squared = vecDotSelf(X_orth, Y_orth);
+            O_squared = @select(float, O_squared != Zero, O_squared, Zero);
 
             const overlapping = vecAnd(max0 >= min1, max1 >= min0);
 
@@ -229,7 +241,6 @@ pub const SimulatorState = struct {
                 (D_min_proj / O_squared) + eps,
                 Zero,
             );
-
             const X_new_push = D_min_proj_scaled * X_orth;
             const Y_new_push = D_min_proj_scaled * Y_orth;
 
@@ -242,10 +253,11 @@ pub const SimulatorState = struct {
             Y_push = @select(float, new_push, Y_new_push, Y_push);
         }
         const mask = vecFloatFromBool(vecNot(separated));
+
         X_push = mask * X_push;
         Y_push = mask * Y_push;
 
-        return .{ @intFromBool(vecNot(separated)), X_push, Y_push };
+        return .{ vecNot(separated), X_push, Y_push };
     }
 
     pub fn resolveCollisions(self: *SimulatorState, geoms: []const stages.Shape) void {
@@ -263,7 +275,7 @@ pub const SimulatorState = struct {
         );
         const hitbox_len = X_edges_dynamic.len;
 
-        var colliding: VecU16 = IntZero;
+        var colliding: VecBool = False;
         var X_minimal_push: Vec = Zero;
         var Y_minimal_push: Vec = Zero;
 
@@ -288,7 +300,7 @@ pub const SimulatorState = struct {
                         X_orths[i], Y_orths[i] = vecRightOrth(X_edge_dynamic, Y_edge_dynamic);
                     }
 
-                    const col, const X_push, const Y_push = separatingAxis(
+                    const new_collision, const X_push_pre_flip, const Y_push_pre_flip = separatingAxis(
                         &X_orths,
                         &Y_orths,
                         &X_corners_dynamic,
@@ -296,14 +308,17 @@ pub const SimulatorState = struct {
                         &X_corners_static,
                         &Y_corners_static,
                     );
-                    colliding +%= col;
+                    const x_shape, const y_shape = shape.vertexCentroid();
+                    const X_push, const Y_push = pushAway(X_push_pre_flip, Y_push_pre_flip, self.physics_state.X, self.physics_state.Y, @splat(x_shape), @splat(y_shape));
+
+                    colliding = vecOr(colliding, new_collision);
                     X_minimal_push += X_push;
-                    Y_minimal_push -= Y_push;
+                    Y_minimal_push += Y_push;
                 },
                 // else => unreachable,
             }
         }
-        self.colliding = @floatFromInt(colliding);
+        self.colliding = vecFloatFromBool(colliding);
         self.physics_state.X += X_minimal_push;
         self.physics_state.Y += Y_minimal_push;
 

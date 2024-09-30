@@ -2,6 +2,7 @@ const max_num_players = @import("game.zig").max_num_players;
 const float = @import("physics.zig").float;
 const utils = @import("utils.zig");
 const ID = @import("render.zig").ID;
+const pixels_per_meter = @import("render.zig").pixels_per_meter;
 
 // Convex Polygons.
 // Must have vertices ordered in counterclockwise direction.
@@ -24,6 +25,9 @@ pub const Triangle = struct {
     }
     pub fn corners(self: Triangle) struct { [3]float, [3]float } {
         return .{ @as([3]float, self.X), @as([3]float, self.Y) };
+    }
+    pub fn vertexCentroid(self: Triangle) struct { float, float } {
+        return .{ (self.X[0] + self.X[1] + self.X[2]) / 3, (self.Y[0] + self.Y[1] + self.Y[2]) / 3 };
     }
 };
 
@@ -66,6 +70,11 @@ pub const Quad = struct {
     pub fn corners(self: Quad) struct { [4]float, [4]float } {
         return .{ @as([4]float, self.X), @as([4]float, self.Y) };
     }
+
+    // We don't compute the area centroid, for performance.
+    pub fn vertexCentroid(self: Quad) struct { float, float } {
+        return .{ (self.X[0] + self.X[1] + self.X[2] + self.X[3]) / 4, (self.Y[0] + self.Y[1] + self.Y[2] + self.Y[3]) / 4 };
+    }
 };
 
 test "Quad edges()" {
@@ -101,7 +110,10 @@ pub const Position = struct {
 pub fn Stage(
     comptime id: u8,
     comptime name: []const u8,
-    comptime background_id: ID,
+    comptime num_background_assets: comptime_int,
+    comptime background_asset_ids: [num_background_assets]ID,
+    comptime num_foreground_assets: comptime_int,
+    comptime foreground_asset_ids: [num_foreground_assets]ID,
     comptime starting_positions: [max_num_players]Position,
     comptime num_shapes: comptime_int,
     comptime geometry: [num_shapes]Shape,
@@ -109,7 +121,8 @@ pub fn Stage(
     return struct {
         id: u8 = id,
         name: []const u8 = name,
-        background_id: ID = background_id,
+        background_asset_ids: [num_background_assets]ID = background_asset_ids,
+        foreground_asset_ids: [num_foreground_assets]ID = foreground_asset_ids,
         starting_positions: [max_num_players]Position = starting_positions,
         geometry: [num_shapes]Shape = geometry,
     };
@@ -119,39 +132,212 @@ pub const StageUnion = union(enum) {
     s0: @TypeOf(s0),
 };
 
-// TODO: only call these once before match
-pub fn stageGeometry(i: usize) []const Shape {
+pub const StageAssets = struct {
+    geometry: []const Shape,
+    background: []const ID,
+    foreground: []const ID,
+};
+
+pub fn stageAssets(i: usize) StageAssets {
     switch (i) {
-        0 => return &s0.geometry,
-        else => unreachable,
-    }
-}
-pub fn stageBackground(i: usize) ID {
-    switch (i) {
-        0 => return s0.background_id,
+        0 => return StageAssets{
+            .geometry = &s0.geometry,
+            .background = &s0.background_asset_ids,
+            .foreground = &s0.foreground_asset_ids,
+        },
         else => unreachable,
     }
 }
 
+const below_screen = 1080 + 200;
+
 pub const s0 = Stage(
     0,
-    "Flat Earth Theory",
-    ID.SPACE_BACKGROUND,
-    .{
-        .{ .x = 0, .y = 0 },
-        .{ .x = 0, .y = -2.5 },
-        .{ .x = -5, .y = 0 },
-        .{ .x = 5, .y = 0 },
-    },
+    "Meteor",
     2,
+    .{ ID.SPACE_BACKGROUND, ID.SPACE_FLOOR },
+    1,
+    .{ID.SPACE_PLATFORMS},
     .{
+        .{ .x = 0, .y = -1.5 },
+        .{ .x = 0, .y = -1.5 },
+        .{ .x = 0, .y = 0 },
+        .{ .x = 0, .y = 0 },
+    },
+    11,
+    .{
+        // Floor left box
         Shape{ .quad = .{
-            .X = .{ -(stage_width_meters / 2), (stage_width_meters / 2), (stage_width_meters / 2), -(stage_width_meters / 2) },
-            .Y = .{ -4.8, -4.8, -4.0, -4.0 },
+            .X = .{
+                fromPixelX(147),
+                fromPixelX(147),
+                fromPixelX(321),
+                fromPixelX(321),
+            },
+            .Y = .{
+                fromPixelY(725),
+                fromPixelY(below_screen),
+                fromPixelY(below_screen),
+                fromPixelY(725),
+            },
         } },
+        // Floor bottom box
         Shape{ .quad = .{
-            .X = .{ -(stage_width_meters / 2) + 0.5, -(stage_width_meters / 2) + 1.5, -(stage_width_meters / 2) + 1.5, -(stage_width_meters / 2) + 0.5 },
-            .Y = .{ -(stage_height_meters / 2), -(stage_height_meters / 2), (stage_height_meters / 2), (stage_height_meters / 2) },
+            .X = .{
+                fromPixelX(321),
+                fromPixelX(321),
+                fromPixelX(1598),
+                fromPixelX(1598),
+            },
+            .Y = .{
+                fromPixelY(996),
+                fromPixelY(below_screen),
+                fromPixelY(below_screen),
+                fromPixelY(996),
+            },
+        } },
+        // Floor middle trapezoid
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(596),
+                fromPixelX(1322),
+                fromPixelX(1153),
+                fromPixelX(764),
+            },
+            .Y = .{
+                fromPixelY(996),
+                fromPixelY(996),
+                fromPixelY(881),
+                fromPixelY(881),
+            },
+        } },
+        // Floor right box
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(1598),
+                fromPixelX(1598),
+                fromPixelX(1770),
+                fromPixelX(1770),
+            },
+            .Y = .{
+                fromPixelY(725),
+                fromPixelY(below_screen),
+                fromPixelY(below_screen),
+                fromPixelY(725),
+            },
+        } },
+        // Top left platform
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(502),
+                fromPixelX(126),
+                fromPixelX(136),
+                fromPixelX(502),
+            },
+            .Y = .{
+                fromPixelY(239),
+                fromPixelY(216),
+                fromPixelY(346),
+                fromPixelY(374),
+            },
+        } },
+        // Middle left platform 1
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(694),
+                fromPixelX(542),
+                fromPixelX(649),
+                fromPixelX(695),
+            },
+            .Y = .{
+                fromPixelY(457),
+                fromPixelY(577),
+                fromPixelY(657),
+                fromPixelY(624),
+            },
+        } },
+        // Middle left platform 2
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(542),
+                fromPixelX(536),
+                fromPixelX(570),
+                fromPixelX(649),
+            },
+            .Y = .{
+                fromPixelY(577),
+                fromPixelY(711),
+                fromPixelY(711),
+                fromPixelY(657),
+            },
+        } },
+        // Middle platform
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(880),
+                fromPixelX(857),
+                fromPixelX(1038),
+                fromPixelX(1027),
+            },
+            .Y = .{
+                fromPixelY(214),
+                fromPixelY(614),
+                fromPixelY(614),
+                fromPixelY(214),
+            },
+        } },
+        // Middle Right platform 1
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(1370),
+                fromPixelX(1213),
+                fromPixelX(1215),
+                fromPixelX(1288),
+            },
+            .Y = .{
+                fromPixelY(577),
+                fromPixelY(458),
+                fromPixelY(629),
+                fromPixelY(675),
+            },
+        } },
+        // Middle Right platform 2
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(1370),
+                fromPixelX(1288),
+                fromPixelX(1343),
+                fromPixelX(1374),
+            },
+            .Y = .{
+                fromPixelY(577),
+                fromPixelY(675),
+                fromPixelY(712),
+                fromPixelY(712),
+            },
+        } },
+        // Top Right platform
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(1797),
+                fromPixelX(1412),
+                fromPixelX(1404),
+                fromPixelX(1791),
+            },
+            .Y = .{
+                fromPixelY(219),
+                fromPixelY(223),
+                fromPixelY(371),
+                fromPixelY(356),
+            },
         } },
     },
 ){};
+
+pub fn fromPixelX(comptime x: comptime_int) float {
+    return x / pixels_per_meter - (stage_width_meters / 2);
+}
+
+pub fn fromPixelY(comptime y: comptime_int) float {
+    return -y / pixels_per_meter + (stage_height_meters / 2);
+}

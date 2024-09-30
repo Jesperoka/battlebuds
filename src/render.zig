@@ -35,6 +35,8 @@ fn vecToPixelX(X: Vec) VecU16 {
     return @intFromFloat(X * ppm + @as(Vec, @floatFromInt(screen_halfwidth)));
 }
 
+// BUG: fix so pixels can be negative
+
 // We assume y is on the screen, check at callsite.
 fn toPixelY(y: float) u16 {
     return @intFromFloat(@as(float, @floatFromInt(WindowSettings.height / 2)) - y * pixels_per_meter);
@@ -67,11 +69,15 @@ pub const ID = enum {
     NONE,
     FIRST_GUY,
     SPACE_BACKGROUND,
+    SPACE_PLATFORMS,
+    SPACE_FLOOR,
 };
 
-const game_assets: [2]Asset = .{
-    .{ .path = "assets/first_guy_big.png", .id = .FIRST_GUY },
-    .{ .path = "assets/SpaceBackground.png", .id = .SPACE_BACKGROUND },
+const game_assets: [4]Asset = .{
+    .{ .path = "assets/characters/alien/body.png", .id = .FIRST_GUY },
+    .{ .path = "assets/stages/meteor/background.png", .id = .SPACE_BACKGROUND },
+    .{ .path = "assets/stages/meteor/platforms.png", .id = .SPACE_PLATFORMS },
+    .{ .path = "assets/stages/meteor/floor.png", .id = .SPACE_FLOOR },
     // "assets/first_guy.png",
 };
 
@@ -235,7 +241,6 @@ pub const Renderer = struct {
             const image = try readPng(path, png.PNG_FORMAT_RGBA);
             defer image.free();
 
-            // utils.print(self.textures.map);
             try self.textures.map.insert(
                 asset.id,
                 .{
@@ -280,7 +285,7 @@ pub const Renderer = struct {
         }
     }
 
-    pub fn render(self: *Renderer, entities: *Entities) !void {
+    pub fn drawEntitites(self: *Renderer, entities: *Entities) !void {
         const N = Entities.num_dynamic_entities;
         for (
             @as([N]u16, entities.X_dynamic),
@@ -304,12 +309,18 @@ pub const Renderer = struct {
             );
         }
 
-        SDL.SDL_RenderPresent(self.renderer);
+        // SDL.SDL_RenderPresent(self.renderer);
     }
 
-    pub fn drawBackground(self: *Renderer, stage: usize) !void {
-        const tex = try self.textures.map.lookup(stages.stageBackground(stage), false);
-        _ = SDL.SDL_RenderCopy(self.renderer, tex.ptr, null, null);
+    pub fn draw(self: *Renderer, IDs: []const ID) !void {
+        for (IDs) |id| {
+            const tex = try self.textures.map.lookup(id, false);
+            _ = SDL.SDL_RenderCopy(self.renderer, tex.ptr, null, null);
+        }
+    }
+
+    pub fn render(self: *Renderer) void {
+        SDL.SDL_RenderPresent(self.renderer);
     }
 };
 

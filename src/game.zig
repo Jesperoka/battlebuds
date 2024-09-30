@@ -33,7 +33,7 @@ pub const Game = struct {
     renderer: *Renderer,
     entities: *Entities,
     sim_state: *SimulatorState,
-    stage: usize,
+    stage_assets: stages.StageAssets,
     timer: std.time.Timer,
     num_players: u8,
 
@@ -55,7 +55,7 @@ pub const Game = struct {
             .renderer = renderer.init(),
             .entities = entities.init(num_players, &stages.s0, indices),
             .sim_state = sim_state.init(num_players, &stages.s0, indices),
-            .stage = 0,
+            .stage_assets = stages.stageAssets(0),
             .timer = std.time.Timer.start() catch unreachable,
             .num_players = num_players,
         };
@@ -69,6 +69,7 @@ pub const Game = struct {
         var stop = false;
 
         // TODO: make outer loop with stage selection;
+        // self.stage_assets = stages.stageAssets(0);
 
         // Zero player actions
         for (0..self.num_players) |i| {
@@ -116,12 +117,15 @@ pub const Game = struct {
 
         // self.sim_state.physics_state = SimulatorState.newtonianMotion(timestep_s, self.sim_state.physics_state);
         self.sim_state.newtonianMotion(timestep_s);
-        self.sim_state.resolveCollisions(stages.stageGeometry(self.stage));
+        self.sim_state.resolveCollisions(self.stage_assets.geometry);
         self.sim_state.gamePhysics();
 
         self.entities.updateDynamicEntities(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
-        self.renderer.drawBackground(self.stage) catch unreachable;
-        self.renderer.render(self.entities) catch unreachable;
+
+        self.renderer.draw(self.stage_assets.background) catch unreachable;
+        self.renderer.drawEntitites(self.entities) catch unreachable;
+        self.renderer.draw(self.stage_assets.foreground) catch unreachable;
+        self.renderer.render();
 
         return stop;
     }
