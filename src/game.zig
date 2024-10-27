@@ -45,9 +45,9 @@ pub const Game = struct {
         sim_state: *SimulatorState,
     ) Game {
         // Random starting locations
-        var indices = comptime utils.range(u8, 0, num_players);
         const seed = @as(u64, @intCast(std.time.microTimestamp()));
         var prng = std.Random.DefaultPrng.init(seed);
+        var indices = comptime utils.range(u8, 0, num_players);
         prng.random().shuffle(u8, &indices);
 
         return Game{

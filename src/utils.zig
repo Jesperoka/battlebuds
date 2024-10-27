@@ -62,12 +62,6 @@ pub fn StaticMap(comptime len: uint, comptime T_things: type, comptime T_names: 
 
     pub fn insert(self: *@This(), name: T_names, thing: T_things, comptime back: bool) StaticMapError!void {
         if (self.cur_back_idx < 0 or self.cur_back_idx < self.cur_front_idx or self.cur_front_idx > len - 1) {
-            print(self.cur_back_idx);
-            print(self.cur_back_idx);
-            print(self.cur_back_idx);
-            print(self.cur_back_idx);
-            print(self.cur_front_idx);
-            print(len);
             return StaticMapError.MapIsFull;
         }
 

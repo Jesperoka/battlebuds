@@ -78,7 +78,6 @@ const game_assets: [4]Asset = .{
     .{ .path = "assets/stages/meteor/background.png", .id = .SPACE_BACKGROUND },
     .{ .path = "assets/stages/meteor/platforms.png", .id = .SPACE_PLATFORMS },
     .{ .path = "assets/stages/meteor/floor.png", .id = .SPACE_FLOOR },
-    // "assets/first_guy.png",
 };
 
 const Textures = struct {
@@ -212,9 +211,9 @@ pub const Renderer = struct {
             utils.sdlPanic();
         }
 
-        self.load_textures(&game_assets) catch |err| std.debug.panic("Error: {any}", .{err});
+        self.loadTextures(&game_assets) catch |err| std.debug.panic("Error: {any}", .{err});
 
-        // NOTE: This will fail if the map is not full
+        utils.assert(self.textures.map.cur_back_idx < self.textures.map.cur_front_idx, "Can't loop through texture map if it's not full.");
         for (0..self.textures.map.things.len) |i| {
             if (SDL.SDL_SetTextureBlendMode(self.textures.map.things[i].ptr, SDL.SDL_BLENDMODE_BLEND) < 0) {
                 utils.sdlPanic();
@@ -232,7 +231,7 @@ pub const Renderer = struct {
     }
 
     // Read .png files to GPU texture buffers and store their pointers.
-    fn load_textures(self: *Renderer, comptime assets: []const Asset) !void {
+    fn loadTextures(self: *Renderer, comptime assets: []const Asset) !void {
         const format = SDL.SDL_PIXELFORMAT_ABGR8888;
         const access_mode = SDL.SDL_TEXTUREACCESS_STREAMING;
 
@@ -254,7 +253,7 @@ pub const Renderer = struct {
                     .width = image.width,
                     .height = image.height,
                 },
-                false,
+                false, // TODO: insert foreground first and background last and retreive them as such
             );
             // self.textures.sdl_textures[i] = SDL.SDL_CreateTexture(self.renderer, format, access_mode, image.width, image.height,) orelse utils.sdlPanic();
 
