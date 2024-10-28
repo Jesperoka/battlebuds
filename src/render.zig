@@ -1,49 +1,49 @@
-/// SDL2 for window management and pointers to GPU buffers.
+/// Using SDL2 for window management and pointers to GPU buffers.
 const std = @import("std");
 const SDL = @import("sdl2");
-const utils = @import("utils.zig");
-const stages = @import("stages.zig");
-const Vec = @import("physics.zig").Vec;
-const VecU16 = @import("physics.zig").VecU16;
-const float = @import("physics.zig").float;
-const vec_length = @import("physics.zig").vec_length;
 const png = @cImport(@cInclude("png.h"));
 const c = @cImport({
     @cInclude("stdlib.h");
     @cInclude("string.h");
 });
 
+const constants = @import("constants.zig");
+const assets = @import("assets.zig");
+const utils = @import("utils.zig");
+const stages = @import("stages.zig");
+const textureMap = @import("assets.zig").textureMap;
+
+const Vec = @import("types.zig").Vec;
+const VecI32 = @import("types.zig").VecI32;
+const float = @import("types.zig").float;
+
 const WindowSettings = struct {
     const title: [*]const u8 = "Battlebuds";
-    const width: u16 = 1920;
-    const height: u16 = 1080;
+    const width: u16 = constants.X_RESOLUTION;
+    const height: u16 = constants.Y_RESOLUTION;
     const x0 = SDL.SDL_WINDOWPOS_CENTERED;
     const y0 = SDL.SDL_WINDOWPOS_CENTERED;
     const sdl_flags = SDL.SDL_WINDOW_SHOWN; // | SDL.SDL_WINDOW_BORDERLESS;
 };
 
-pub const pixels_per_meter: float = @as(float, @floatFromInt(WindowSettings.width)) / stages.stage_width_meters;
-
-// We assume x is on the screen, check at callsite.
 fn toPixelX(x: float) u16 {
-    return @intFromFloat(x * pixels_per_meter + @as(float, @floatFromInt(WindowSettings.width / 2)));
+    return @intFromFloat(x * constants.PIXELS_PER_METER + @as(float, @floatFromInt(WindowSettings.width / 2)));
 }
-fn vecToPixelX(X: Vec) VecU16 {
-    const ppm: Vec = @splat(pixels_per_meter);
-    const screen_halfwidth: VecU16 = @splat(WindowSettings.width / 2);
+
+fn vecToPixelX(X: Vec) VecI32 {
+    const ppm: Vec = @splat(constants.PIXELS_PER_METER);
+    const screen_halfwidth: VecI32 = @splat(WindowSettings.width / 2);
 
     return @intFromFloat(X * ppm + @as(Vec, @floatFromInt(screen_halfwidth)));
 }
 
-// BUG: fix so pixels can be negative
-
-// We assume y is on the screen, check at callsite.
-fn toPixelY(y: float) u16 {
-    return @intFromFloat(@as(float, @floatFromInt(WindowSettings.height / 2)) - y * pixels_per_meter);
+fn toPixelY(y: float) i32 {
+    return @intFromFloat(@as(float, @floatFromInt(WindowSettings.height / 2)) - y * constants.PIXELS_PER_METER);
 }
-fn vecToPixelY(Y: Vec) VecU16 {
-    const ppm: Vec = @splat(pixels_per_meter);
-    const screen_halfheight: VecU16 = @splat(WindowSettings.height / 2);
+
+fn vecToPixelY(Y: Vec) VecI32 {
+    const ppm: Vec = @splat(constants.PIXELS_PER_METER);
+    const screen_halfheight: VecI32 = @splat(WindowSettings.height / 2);
 
     return @intFromFloat(-Y * ppm + @as(Vec, @floatFromInt(screen_halfheight)));
 }
@@ -60,51 +60,20 @@ const Image = struct {
     }
 };
 
-const Asset = struct {
-    path: []const u8,
-    id: ID,
-};
-
-pub const ID = enum {
-    NONE,
-    FIRST_GUY,
-    SPACE_BACKGROUND,
-    SPACE_PLATFORMS,
-    SPACE_FLOOR,
-};
-
-const game_assets: [4]Asset = .{
-    .{ .path = "assets/characters/alien/body.png", .id = .FIRST_GUY },
-    .{ .path = "assets/stages/meteor/background.png", .id = .SPACE_BACKGROUND },
-    .{ .path = "assets/stages/meteor/platforms.png", .id = .SPACE_PLATFORMS },
-    .{ .path = "assets/stages/meteor/floor.png", .id = .SPACE_FLOOR },
-};
-
-const Textures = struct {
-    const Tex = struct {
-        ptr: *SDL.SDL_Texture,
-        width: c_int,
-        height: c_int,
-    };
-    map: @TypeOf(utils.StaticMap(game_assets.len, Tex, ID)) = utils.StaticMap(game_assets.len, Tex, ID),
-};
-
 const ReadError = error{ OutOfMemory, FailedImageRead };
 
 pub const Entities = struct {
     const max_entities = 1024;
-    const num_dynamic_entities = vec_length;
-    // var pos_memory: [2 * max_entities]u16 = .{inactive_barrier} ** (2 * max_entities);
-    // var mode_memory: [max_entities]EntityMode = .{.{ .first_guy = FirstGuyMode.NONE }} ** max_entities;
+    const num_dynamic_entities = constants.VEC_LENGTH;
 
-    X_dynamic: VecU16 = @splat(0),
-    Y_dynamic: VecU16 = @splat(0),
-    modes_dynamic: [num_dynamic_entities]EntityMode = .{.{ .common = CommonMode.NONE }} ** num_dynamic_entities,
+    X_dynamic: VecI32 = @splat(0),
+    Y_dynamic: VecI32 = @splat(0),
+    modes_dynamic: [num_dynamic_entities]assets.EntityMode = .{.{ .common = assets.CommonMode.NONE }} ** num_dynamic_entities,
 
-    pub fn init(
-        self: *Entities,
+    pub inline fn init(
+        comptime self: *Entities,
         comptime num_players: u8,
-        stage: *const @TypeOf(stages.s0),
+        comptime stage: *const @TypeOf(stages.stage0),
         shuffled_indices: [num_players]u8,
     ) *Entities {
         for (shuffled_indices, 0..num_players) |idx, i| {
@@ -122,77 +91,13 @@ pub const Entities = struct {
     }
 };
 
-const ModeBackingInt = u16;
-
-const CommonMode = enum(ModeBackingInt) {
-    NONE,
-};
-
-const CharacterMode = enum(ModeBackingInt) {
-    DEAD,
-    STANDING,
-    RUNNING,
-    JUMPING,
-};
-
-const ObjectMode = enum(ModeBackingInt) {
-    NORMAL,
-    BREAKING,
-    BROKEN,
-    BALLISTIC,
-};
-
-const FirstGuyMode = enum(ModeBackingInt) {
-    DEAD,
-    STANDING,
-    RUNNING,
-    JUMPING,
-};
-
-const EntityMode = union(enum(ModeBackingInt)) {
-    common: CommonMode,
-    first_guy: FirstGuyMode,
-    character: CharacterMode,
-    object: ObjectMode,
-};
-
-const ModeIdError = error{
-    MissingMode,
-};
-
-// I want to do this with a utils.StaticMap later
-// so I can make a character select screen that maps asset groups to
-// character types.
-fn EntityModeToAssetID(mode: EntityMode) ModeIdError!ID {
-    switch (mode) {
-        .common => |common_mode| switch (common_mode) {
-            .NONE => return ID.NONE,
-        },
-        .first_guy => |first_guy_mode| switch (first_guy_mode) {
-            .DEAD => return ModeIdError.MissingMode,
-            .STANDING => return ID.FIRST_GUY,
-            .RUNNING => return ModeIdError.MissingMode,
-            .JUMPING => return ModeIdError.MissingMode,
-        },
-        .object => |obj_mode| switch (obj_mode) {
-            .NORMAL => return ModeIdError.MissingMode,
-            .BREAKING => return ModeIdError.MissingMode,
-            .BROKEN => return ModeIdError.MissingMode,
-            .BALLISTIC => return ModeIdError.MissingMode,
-        },
-        else => return ModeIdError.MissingMode,
-    }
-    unreachable;
-    // return ModeIdError.MissingMode;
-}
-
 pub const Renderer = struct {
-    textures: Textures = Textures{},
+    textures: Textures = undefined,
     renderer: *SDL.SDL_Renderer = undefined,
     window: *SDL.SDL_Window = undefined,
     num_textures: u8 = undefined,
 
-    pub fn init(self: *Renderer) *Renderer {
+    pub fn init(comptime self: *Renderer) *Renderer {
         if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO) < 0) {
             utils.sdlPanic();
         }
@@ -211,12 +116,15 @@ pub const Renderer = struct {
             utils.sdlPanic();
         }
 
-        self.loadTextures(&game_assets) catch |err| std.debug.panic("Error: {any}", .{err});
+        self.textures.init();
 
         utils.assert(self.textures.map.cur_back_idx < self.textures.map.cur_front_idx, "Can't loop through texture map if it's not full.");
-        for (0..self.textures.map.things.len) |i| {
-            if (SDL.SDL_SetTextureBlendMode(self.textures.map.things[i].ptr, SDL.SDL_BLENDMODE_BLEND) < 0) {
-                utils.sdlPanic();
+
+        for (self.textures.map.things) |textures| {
+            for (textures) |texture| {
+                if (SDL.SDL_SetTextureBlendMode(texture.ptr, SDL.SDL_BLENDMODE_BLEND) < 0) {
+                    utils.sdlPanic();
+                }
             }
         }
 
@@ -224,97 +132,53 @@ pub const Renderer = struct {
     }
 
     pub fn deinit(self: *Renderer) void {
-        for (self.textures.map.things) |tex| SDL.SDL_DestroyTexture(tex.ptr);
+        self.textures.deinit();
         _ = SDL.SDL_DestroyRenderer(self.renderer);
         SDL.SDL_DestroyWindow(self.window);
         SDL.SDL_Quit();
     }
 
-    // Read .png files to GPU texture buffers and store their pointers.
-    fn loadTextures(self: *Renderer, comptime assets: []const Asset) !void {
-        const format = SDL.SDL_PIXELFORMAT_ABGR8888;
-        const access_mode = SDL.SDL_TEXTUREACCESS_STREAMING;
-
-        for (assets) |asset| {
-            const path = @as([*:0]const u8, @ptrCast(asset.path));
-            const image = try readPng(path, png.PNG_FORMAT_RGBA);
-            defer image.free();
-
-            try self.textures.map.insert(
-                asset.id,
-                .{
-                    .ptr = SDL.SDL_CreateTexture(
-                        self.renderer,
-                        format,
-                        access_mode,
-                        image.width,
-                        image.height,
-                    ) orelse utils.sdlPanic(),
-                    .width = image.width,
-                    .height = image.height,
-                },
-                false, // TODO: insert foreground first and background last and retreive them as such
-            );
-            // self.textures.sdl_textures[i] = SDL.SDL_CreateTexture(self.renderer, format, access_mode, image.width, image.height,) orelse utils.sdlPanic();
-
-            var pixels: ?*c_int = undefined;
-            var stride: c_int = undefined;
-            const pixels_ptr: [*]?*anyopaque = @ptrCast(@alignCast(@constCast(&pixels)));
-            const stride_ptr: [*]c_int = @ptrCast(@alignCast(@constCast(&stride)));
-
-            utils.assert(SDL.SDL_LockTexture(
-                (try self.textures.map.lookup(asset.id, false)).ptr,
-                null,
-                pixels_ptr,
-                stride_ptr,
-            ) == 0, "SDL_LockTexture() failed.");
-
-            const stride_gpu = toUsizeChecked(stride);
-            const stride_cpu = toUsizeChecked(image.stride);
-            const start_addr_gpu = opaqueToAddr(pixels_ptr[0].?);
-            const start_addr_cpu = opaqueToAddr(image.buffer.?);
-            const width = toUsizeChecked(image.width);
-            const height = toUsizeChecked(image.height);
-
-            copyPixels(start_addr_cpu, start_addr_gpu, stride_cpu, stride_gpu, width, height);
-
-            SDL.SDL_UnlockTexture(
-                (try self.textures.map.lookup(asset.id, false)).ptr,
-            );
-        }
-    }
-
-    pub fn drawEntitites(self: *Renderer, entities: *Entities) !void {
+    pub fn drawEntitites(
+        self: *Renderer,
+        counter: usize,
+        entities: *Entities,
+    ) !void {
         const N = Entities.num_dynamic_entities;
+
         for (
-            @as([N]u16, entities.X_dynamic),
-            @as([N]u16, entities.Y_dynamic),
+            @as([N]i32, entities.X_dynamic),
+            @as([N]i32, entities.Y_dynamic),
             entities.modes_dynamic,
         ) |x, y, mode| {
-            const id: ID = try EntityModeToAssetID(mode);
+            const id: assets.ID = try assets.IDFromEntityMode(mode); // TODO: rework
             if (id == .NONE) continue;
 
-            const tex = try self.textures.map.lookup(id, false);
+            const textures = try self.textures.map.lookup(id, false);
+            const texture = textures[counter % assets.ASSETS_PER_ID[id]];
+
             _ = SDL.SDL_RenderCopy(
                 self.renderer,
-                tex.ptr,
+                texture.ptr,
                 null,
                 &SDL.SDL_Rect{
-                    .x = x - @divExact(tex.width, 2),
-                    .y = y - @divExact(tex.height, 2),
-                    .w = tex.width,
-                    .h = tex.height,
+                    .x = x - @divExact(texture.width, 2),
+                    .y = y - @divExact(texture.height, 2),
+                    .w = texture.width,
+                    .h = texture.height,
                 },
             );
         }
-
-        // SDL.SDL_RenderPresent(self.renderer);
     }
 
-    pub fn draw(self: *Renderer, IDs: []const ID) !void {
+    pub fn draw(
+        self: *Renderer,
+        counter: usize,
+        IDs: []const assets.ID,
+    ) !void {
         for (IDs) |id| {
-            const tex = try self.textures.map.lookup(id, false);
-            _ = SDL.SDL_RenderCopy(self.renderer, tex.ptr, null, null);
+            const textures = try self.textures.map.lookup(id, false);
+            const texture = textures[counter % assets.ASSETS_PER_ID[id]];
+            _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
         }
     }
 
@@ -322,6 +186,96 @@ pub const Renderer = struct {
         SDL.SDL_RenderPresent(self.renderer);
     }
 };
+
+fn fillWithColor(renderer: *SDL.SDL_Renderer) void {
+    if (SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF) < 0) {
+        utils.sdlPanic();
+    }
+    if (SDL.SDL_RenderClear(renderer) < 0) { // Note: read "Clear" as "Fill"
+        utils.sdlPanic();
+    }
+}
+
+pub const Textures = struct {
+    const FORMAT: c_int = SDL.SDL_PIXELFORMAT_ABGR8888;
+    const ACCESS_MODE: c_int = SDL.SDL_TEXTUREACCESS_STREAMING;
+
+    map: assets.TextureMap,
+
+    pub fn init(
+        self: *Textures,
+        renderer: *SDL.SDL_Renderer,
+    ) !Textures {
+        for (assets.ID) |id| {
+            var textures: [assets.ASSETS_PER_ID]assets.Texture = undefined;
+            var count = 0;
+
+            // For simplicity, just check all assets.
+            for (assets.game_assets) |asset| {
+                if (asset.id != id) continue;
+
+                const texture = try loadTexture(asset.path, renderer, FORMAT, ACCESS_MODE) catch unreachable;
+                textures[count] = texture;
+                count += 1;
+
+                if (count >= textures.len) break;
+            }
+            self.map.insert(textures, id, false);
+        }
+
+        return self;
+    }
+
+    pub fn deinit(self: *Textures) void {
+        for (self.map.things) |textures| {
+            for (textures) |texture| {
+                SDL.SDL_DestroyTexture(texture.ptr);
+            }
+        }
+    }
+};
+
+fn loadTexture(
+    path: []const u8,
+    renderer: *SDL.SDL_Renderer,
+    comptime format: c_int,
+    comptime access_mode: c_int,
+) !assets.Texture {
+    const c_str_path = @as([*:0]const u8, @ptrCast(path));
+    const image = try readPng(c_str_path, png.PNG_FORMAT_RGBA);
+    defer image.free();
+
+    const texture_ptr = SDL.SDL_CreateTexture(
+        renderer,
+        format,
+        access_mode,
+        image.width,
+        image.height,
+    ) orelse utils.sdlPanic();
+
+    var pixels: ?*c_int = undefined;
+    var stride: c_int = undefined;
+    const pixels_ptr: [*]?*anyopaque = @ptrCast(@alignCast(@constCast(&pixels)));
+    const stride_ptr: [*]c_int = @ptrCast(@alignCast(@constCast(&stride)));
+
+    utils.assert(
+        SDL.SDL_LockTexture(texture_ptr, null, pixels_ptr, stride_ptr) == 0,
+        "SDL_LockTexture() failed.",
+    );
+
+    const stride_gpu = toUsizeChecked(stride);
+    const stride_cpu = toUsizeChecked(image.stride);
+    const start_addr_gpu = opaqueToAddr(pixels_ptr[0].?);
+    const start_addr_cpu = opaqueToAddr(image.buffer.?);
+    const width = toUsizeChecked(image.width);
+    const height = toUsizeChecked(image.height);
+
+    copyPixels(start_addr_cpu, start_addr_gpu, stride_cpu, stride_gpu, width, height);
+
+    SDL.SDL_UnlockTexture(texture_ptr);
+
+    return .{ texture_ptr, width, height };
+}
 
 // Translated expanded C macros from libpng
 //-----------------------------------------
@@ -360,15 +314,6 @@ fn readPng(path: [*:0]const u8, format: c_uint) ReadError!Image {
     }
     std.debug.print("Error message from libpng: {s}", .{img.message});
     return ReadError.FailedImageRead;
-}
-
-fn fillWithColor(renderer: *SDL.SDL_Renderer) void {
-    if (SDL.SDL_SetRenderDrawColor(renderer, 0xF7, 0xA4, 0x1D, 0xFF) < 0) {
-        utils.sdlPanic();
-    }
-    if (SDL.SDL_RenderClear(renderer) < 0) { // Note: read "Clear" as "Fill"
-        utils.sdlPanic();
-    }
 }
 
 fn opaqueToAddr(ptr: *anyopaque) usize {

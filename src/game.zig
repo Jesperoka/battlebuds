@@ -1,8 +1,6 @@
 /// Gameplay logic
 const std = @import("std");
-const utils = @import("utils.zig");
 const hidapi = @cImport(@cInclude("hidapi.h"));
-const stages = @import("stages.zig");
 
 const SDL_PollEvent = @import("sdl2").SDL_PollEvent;
 const SDL_Event = @import("sdl2").SDL_Event;
@@ -13,22 +11,18 @@ const SDLK_q = @import("sdl2").SDLK_q;
 const SDL_Renderer = @import("sdl2").SDL_Renderer;
 const SDL_Window = @import("sdl2").SDL_Window;
 
+const constants = @import("constants.zig");
+const utils = @import("utils.zig");
+const stages = @import("stages.zig");
+
+const float = @import("types.zig").float;
+
 pub const Renderer = @import("render.zig").Renderer;
-pub const pixels_per_meter = @import("render.zig").pixels_per_meter;
 pub const Entities = @import("render.zig").Entities;
 pub const SimulatorState = @import("physics.zig").SimulatorState;
 
-const vec_length = @import("physics.zig").vec_length;
-const Vec = @import("physics.zig").Vec;
-const float = @import("physics.zig").float;
-
-pub const max_num_players = 4;
-
-const timestep_s: float = 1.0 / 60.0;
-const timestep_ns: u64 = 1.667e+7;
-
 pub const Game = struct {
-    player_actions: [max_num_players]InputHandler.PlayerAction = undefined,
+    player_actions: [constants.MAX_NUM_PLAYERS]InputHandler.PlayerAction = undefined,
     input_handler: *InputHandler,
     renderer: *Renderer,
     entities: *Entities,
@@ -39,10 +33,10 @@ pub const Game = struct {
 
     pub fn init(
         comptime num_players: u8,
-        input_handler: *InputHandler,
-        renderer: *Renderer,
-        entities: *Entities,
-        sim_state: *SimulatorState,
+        comptime input_handler: *InputHandler,
+        comptime renderer: *Renderer,
+        comptime entities: *Entities,
+        comptime sim_state: *SimulatorState,
     ) Game {
         // Random starting locations
         const seed = @as(u64, @intCast(std.time.microTimestamp()));
@@ -53,8 +47,8 @@ pub const Game = struct {
         return Game{
             .input_handler = input_handler.init(num_players),
             .renderer = renderer.init(),
-            .entities = entities.init(num_players, &stages.s0, indices),
-            .sim_state = sim_state.init(num_players, &stages.s0, indices),
+            .entities = entities.init(num_players, &stages.stage0, indices),
+            .sim_state = sim_state.init(num_players, &stages.stage0, indices),
             .stage_assets = stages.stageAssets(0),
             .timer = std.time.Timer.start() catch unreachable,
             .num_players = num_players,
@@ -66,8 +60,6 @@ pub const Game = struct {
     }
 
     pub fn run(self: *Game) void {
-        var stop = false;
-
         // TODO: make outer loop with stage selection;
         // self.stage_assets = stages.stageAssets(0);
 
@@ -76,24 +68,28 @@ pub const Game = struct {
             self.player_actions[i] = InputHandler.PlayerAction{};
         }
 
+        var stop = false;
+        var counter: u64 = 0;
+
         // Start match
         while (!stop) {
             self.timer.reset();
-            stop = self.step();
+            stop = self.step(counter);
 
             // Always read player inputs
             var atleast_once = true;
-            while (self.timer.read() < timestep_ns or atleast_once) {
+            while (self.timer.read() < constants.TIMESTEP_NS or atleast_once) {
                 atleast_once = false;
                 const reports = self.input_handler.read_input();
                 for (reports, 0..self.num_players) |report, i| {
                     self.player_actions[i] = InputHandler.action(report);
                 }
             }
+            counter += 1;
         }
     }
 
-    fn step(self: *Game) bool {
+    fn step(self: *Game, counter: u64) bool {
         const stop = handle_sdl_events();
 
         // PLAYER INPUT
@@ -115,16 +111,15 @@ pub const Game = struct {
             self.sim_state.physics_state.ddX[player] += move_acc;
         }
 
-        // self.sim_state.physics_state = SimulatorState.newtonianMotion(timestep_s, self.sim_state.physics_state);
-        self.sim_state.newtonianMotion(timestep_s);
+        self.sim_state.newtonianMotion(constants.TIMESTEP_S);
         self.sim_state.resolveCollisions(self.stage_assets.geometry);
         self.sim_state.gamePhysics();
 
         self.entities.updateDynamicEntities(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
 
-        self.renderer.draw(self.stage_assets.background) catch unreachable;
-        self.renderer.drawEntitites(self.entities) catch unreachable;
-        self.renderer.draw(self.stage_assets.foreground) catch unreachable;
+        self.renderer.draw(counter, self.stage_assets.background) catch unreachable;
+        self.renderer.drawEntitites(counter, self.entities) catch unreachable;
+        self.renderer.draw(counter, self.stage_assets.foreground) catch unreachable;
         self.renderer.render();
 
         return stop;
@@ -185,7 +180,7 @@ pub const InputHandler = struct {
     devices: [max_num_devices]*hidapi.hid_device = undefined,
     num_devices: u8 = undefined,
 
-    fn init(self: *InputHandler, comptime num_players: u8) *InputHandler {
+    fn init(comptime self: *InputHandler, comptime num_players: u8) *InputHandler {
         self.num_devices = num_players;
         utils.assert(hidapi.hid_init() == 0, "hid_init() failed.");
 

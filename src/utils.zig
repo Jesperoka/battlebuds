@@ -31,7 +31,7 @@ pub fn range(comptime T: type, comptime n: T, comptime N: T) [N - n]T {
     return ints;
 }
 
-const StaticMapError = error{
+pub const StaticMapError = error{
     MapIsFull,
     MissingItem,
 };
@@ -40,6 +40,7 @@ const uint = u8;
 
 // Making my own static-size lookup table for fun and to learn a bit more comptime.
 // Insert the most frequently accessed items first (at back or front).
+// In the case of duplicates, the first match is returned. Up to user not to be stupid.
 pub fn StaticMap(comptime len: uint, comptime T_things: type, comptime T_names: type) struct {
     comptime len: uint = len,
     names: [len]T_names = .{undefined} ** len,
@@ -55,9 +56,13 @@ pub fn StaticMap(comptime len: uint, comptime T_things: type, comptime T_names: 
     }
 
     inline fn eq(a: T_names, b: T_names) bool {
-        if (T_names == []const u8) { // support string comparisons
-            return std.mem.eql(u8, a, b);
-        } else return a == b;
+        const typeInfo = @typeInfo(T_names);
+        const Slice = std.builtin.Type.Pointer.Size.Slice;
+
+        switch (typeInfo) {
+            .Pointer => |ptr| if (ptr.size == Slice) return std.mem.eql(ptr.child, a, b),
+            else => return a == b,
+        }
     }
 
     pub fn insert(self: *@This(), name: T_names, thing: T_things, comptime back: bool) StaticMapError!void {

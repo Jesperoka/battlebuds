@@ -1,8 +1,9 @@
-const max_num_players = @import("game.zig").max_num_players;
-const float = @import("physics.zig").float;
+/// All the maps in the game.
+const constants = @import("constants.zig");
 const utils = @import("utils.zig");
-const ID = @import("render.zig").ID;
-const pixels_per_meter = @import("render.zig").pixels_per_meter;
+
+const float = @import("types.zig").float;
+const ID = @import("assets.zig").ID;
 
 // Convex Polygons.
 // Must have vertices ordered in counterclockwise direction.
@@ -99,9 +100,6 @@ pub const Shape = union(enum) {
     quad: Quad,
 };
 
-pub const stage_width_meters: float = 20;
-pub const stage_height_meters: float = stage_width_meters * (9.0 / 16.0);
-
 pub const Position = struct {
     x: float,
     y: float,
@@ -114,7 +112,7 @@ pub fn Stage(
     comptime background_asset_ids: [num_background_assets]ID,
     comptime num_foreground_assets: comptime_int,
     comptime foreground_asset_ids: [num_foreground_assets]ID,
-    comptime starting_positions: [max_num_players]Position,
+    comptime starting_positions: [constants.MAX_NUM_PLAYERS]Position,
     comptime num_shapes: comptime_int,
     comptime geometry: [num_shapes]Shape,
 ) type {
@@ -123,13 +121,13 @@ pub fn Stage(
         name: []const u8 = name,
         background_asset_ids: [num_background_assets]ID = background_asset_ids,
         foreground_asset_ids: [num_foreground_assets]ID = foreground_asset_ids,
-        starting_positions: [max_num_players]Position = starting_positions,
+        starting_positions: [constants.MAX_NUM_PLAYERS]Position = starting_positions,
         geometry: [num_shapes]Shape = geometry,
     };
 }
 
 pub const StageUnion = union(enum) {
-    s0: @TypeOf(s0),
+    stage0: @TypeOf(stage0),
 };
 
 pub const StageAssets = struct {
@@ -138,12 +136,13 @@ pub const StageAssets = struct {
     foreground: []const ID,
 };
 
+// TODO: use enum
 pub fn stageAssets(i: usize) StageAssets {
     switch (i) {
         0 => return StageAssets{
-            .geometry = &s0.geometry,
-            .background = &s0.background_asset_ids,
-            .foreground = &s0.foreground_asset_ids,
+            .geometry = &stage0.geometry,
+            .background = &stage0.background_asset_ids,
+            .foreground = &stage0.foreground_asset_ids,
         },
         else => unreachable,
     }
@@ -151,7 +150,8 @@ pub fn stageAssets(i: usize) StageAssets {
 
 const below_screen = 1080 + 200;
 
-pub const s0 = Stage(
+// TODO MAYBE: create a stage creator in python
+pub const stage0 = Stage(
     0,
     "Meteor",
     2,
@@ -335,9 +335,9 @@ pub const s0 = Stage(
 ){};
 
 pub fn fromPixelX(comptime x: comptime_int) float {
-    return x / pixels_per_meter - (stage_width_meters / 2);
+    return x / constants.PIXELS_PER_METER - (constants.STAGE_WIDTH_METERS / 2);
 }
 
 pub fn fromPixelY(comptime y: comptime_int) float {
-    return -y / pixels_per_meter + (stage_height_meters / 2);
+    return -y / constants.PIXELS_PER_METER + (constants.STAGE_HEIGHT_METERS / 2);
 }

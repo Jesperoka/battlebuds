@@ -1,26 +1,13 @@
 /// Some 2D rigid-body physics.
+const constants = @import("constants.zig");
 const std = @import("std");
 const utils = @import("utils.zig");
 const stages = @import("stages.zig");
-const ppm = @import("render.zig").pixels_per_meter;
 
-const time = std.time;
-
-// time.Timer
-pub const float = f32;
-pub const vec_length = 32;
-pub const inf = std.math.inf(float);
-
-pub const Vec = @Vector(vec_length, float);
-pub const VecU16 = @Vector(vec_length, u16);
-pub const VecBool = @Vector(vec_length, bool);
-
-pub const Zero: Vec = @splat(0);
-pub const One: Vec = @splat(1);
-pub const Two: Vec = @splat(2);
-pub const True: VecBool = @splat(true);
-pub const False: VecBool = @splat(false);
-pub const IntZero: VecU16 = @splat(0);
+const float = @import("types.zig").float;
+const Vec = @import("types.zig").Vec;
+const VecBool = @import("types.zig").VecBool;
+const VecI32 = @import("types.zig").VecI32;
 
 fn vecOr(a: VecBool, b: VecBool) VecBool { // https://github.com/ziglang/zig/issues/14306
     return @select(bool, a, a, b);
@@ -29,7 +16,7 @@ fn vecAnd(a: VecBool, b: VecBool) VecBool { // https://github.com/ziglang/zig/is
     return @select(bool, a, b, a);
 }
 fn vecNot(a: VecBool) VecBool {
-    return a != True;
+    return a != constants.TRUE_VEC;
 }
 fn vecFloatFromBool(a: VecBool) Vec {
     return @floatFromInt(@intFromBool(a));
@@ -55,8 +42,9 @@ const PhysicsState = struct {
     ddX: Vec = @splat(0), // Not used in arithmetic functions below
     ddY: Vec = @splat(0), // Not used in arithmetic functions below
 
-    W: Vec = @splat(100 / ppm), // Not used in arithmetic functions below
-    H: Vec = @splat(100 / ppm), // Not used in arithmetic functions below
+    // TODO: This is a temporary solution. Rework entity shape.
+    W: Vec = @splat(100 / constants.PIXELS_PER_METER), // Not used in arithmetic functions below
+    H: Vec = @splat(100 / constants.PIXELS_PER_METER), // Not used in arithmetic functions below
 
     fn minus(this: PhysicsState, that: PhysicsState) PhysicsState {
         return .{
@@ -106,14 +94,14 @@ pub const SimulatorState = struct {
     const newton_epsilon: f32 = 10e-6;
 
     physics_state: PhysicsState = .{},
-    colliding: Vec = Zero,
-    X_push: Vec = Zero,
-    Y_push: Vec = Zero,
+    colliding: Vec = constants.ZERO_VEC,
+    X_push: Vec = constants.ZERO_VEC,
+    Y_push: Vec = constants.ZERO_VEC,
 
     pub fn init(
-        self: *SimulatorState,
+        comptime self: *SimulatorState,
         comptime num_players: u8,
-        stage: *const @TypeOf(stages.s0),
+        comptime stage: *const @TypeOf(stages.stage0),
         shuffled_indices: [num_players]u8,
     ) *SimulatorState {
         for (shuffled_indices, 0..num_players) |idx, i| {
@@ -150,15 +138,15 @@ pub const SimulatorState = struct {
         // |    |
         // 0----1
 
-        const X0 = X - (W / Two);
-        const X1 = X + (W / Two);
-        const X2 = X + (W / Two);
-        const X3 = X - (W / Two);
+        const X0 = X - (W / constants.TWO_VEC);
+        const X1 = X + (W / constants.TWO_VEC);
+        const X2 = X + (W / constants.TWO_VEC);
+        const X3 = X - (W / constants.TWO_VEC);
 
-        const Y0 = Y - (H / Two);
-        const Y1 = Y - (H / Two);
-        const Y2 = Y + (H / Two);
-        const Y3 = Y + (H / Two);
+        const Y0 = Y - (H / constants.TWO_VEC);
+        const Y1 = Y - (H / constants.TWO_VEC);
+        const Y2 = Y + (H / constants.TWO_VEC);
+        const Y3 = Y + (H / constants.TWO_VEC);
 
         return .{
             .{ X1 - X0, X2 - X1, X3 - X2, X0 - X3 },
@@ -171,15 +159,15 @@ pub const SimulatorState = struct {
         // |    |
         // 0----1
 
-        const X0 = X - (W / Two);
-        const X1 = X + (W / Two);
-        const X2 = X + (W / Two);
-        const X3 = X - (W / Two);
+        const X0 = X - (W / constants.TWO_VEC);
+        const X1 = X + (W / constants.TWO_VEC);
+        const X2 = X + (W / constants.TWO_VEC);
+        const X3 = X - (W / constants.TWO_VEC);
 
-        const Y0 = Y - (H / Two);
-        const Y1 = Y - (H / Two);
-        const Y2 = Y + (H / Two);
-        const Y3 = Y + (H / Two);
+        const Y0 = Y - (H / constants.TWO_VEC);
+        const Y1 = Y - (H / constants.TWO_VEC);
+        const Y2 = Y + (H / constants.TWO_VEC);
+        const Y3 = Y + (H / constants.TWO_VEC);
 
         return .{
             .{ X0, X1, X2, X3 },
@@ -191,8 +179,8 @@ pub const SimulatorState = struct {
         const X_displacement = X_shape - X;
         const Y_displacement = Y_shape - Y;
         const dot_product = vecDot(X_push, Y_push, X_displacement, Y_displacement);
-        const X_push_flipped = @select(float, dot_product > Zero, -X_push, X_push);
-        const Y_push_flipped = @select(float, dot_product > Zero, -Y_push, Y_push);
+        const X_push_flipped = @select(float, dot_product > constants.ZERO_VEC, -X_push, X_push);
+        const Y_push_flipped = @select(float, dot_product > constants.ZERO_VEC, -Y_push, Y_push);
 
         return .{ X_push_flipped, Y_push_flipped };
     }
@@ -207,13 +195,13 @@ pub const SimulatorState = struct {
     ) struct { VecBool, Vec, Vec } {
         var X_push: Vec = @splat(99999); // If we use inf, we get NaNs unless we filter.
         var Y_push: Vec = @splat(99999); // If we use inf, we get NaNs unless we filter.
-        var separated = False;
+        var separated = constants.FALSE_VEC;
 
         for (X_orths, Y_orths) |X_orth, Y_orth| {
-            var min0: Vec = @splat(inf);
-            var min1: Vec = @splat(inf);
-            var max0: Vec = @splat(-inf);
-            var max1: Vec = @splat(-inf);
+            var min0: Vec = @splat(constants.INFINITY);
+            var min1: Vec = @splat(constants.INFINITY);
+            var max0: Vec = @splat(-constants.INFINITY);
+            var max1: Vec = @splat(-constants.INFINITY);
 
             for (X_verts_0, Y_verts_0) |X, Y| {
                 const P = vecDot(X, Y, X_orth, Y_orth);
@@ -225,11 +213,11 @@ pub const SimulatorState = struct {
                 min1 = @min(min1, P);
                 max1 = @max(max1, P);
             }
-            const eps: Vec = @splat(0.0 / ppm);
+            const eps: Vec = @splat(0.0 / constants.PIXELS_PER_METER);
             const D_min_proj = @min(max1 - min0, max0 - min1);
 
             var O_squared = vecDotSelf(X_orth, Y_orth);
-            O_squared = @select(float, O_squared != Zero, O_squared, Zero);
+            O_squared = @select(float, O_squared != constants.ZERO_VEC, O_squared, constants.ZERO_VEC);
 
             const overlapping = vecAnd(max0 >= min1, max1 >= min0);
 
@@ -239,7 +227,7 @@ pub const SimulatorState = struct {
                 float,
                 overlapping,
                 (D_min_proj / O_squared) + eps,
-                Zero,
+                constants.ZERO_VEC,
             );
             const X_new_push = D_min_proj_scaled * X_orth;
             const Y_new_push = D_min_proj_scaled * Y_orth;
@@ -275,9 +263,9 @@ pub const SimulatorState = struct {
         );
         const hitbox_len = X_edges_dynamic.len;
 
-        var colliding: VecBool = False;
-        var X_minimal_push: Vec = Zero;
-        var Y_minimal_push: Vec = Zero;
+        var colliding: VecBool = constants.FALSE_VEC;
+        var X_minimal_push: Vec = constants.ZERO_VEC;
+        var Y_minimal_push: Vec = constants.ZERO_VEC;
 
         for (geoms) |geom| {
             switch (geom) {
@@ -327,7 +315,7 @@ pub const SimulatorState = struct {
     }
 
     pub fn gamePhysics(self: *SimulatorState) void {
-        const gravity: @Vector(vec_length, float) = @splat(-50.81);
+        const gravity: Vec = @splat(-50.81);
         const friction_coeff: Vec = @splat(10.0);
         const drag_coeff: Vec = @splat(0.2);
         const elasticity: Vec = @splat(0.3);
@@ -348,14 +336,14 @@ pub const SimulatorState = struct {
         const glide_x: Vec = vecFloatFromBool(@abs(dX) > glide_vel_cutoff);
         const glide_y: Vec = vecFloatFromBool(@abs(dY) > glide_vel_cutoff);
 
-        const preserved_dX: Vec = @select(float, self.X_push < self.Y_push, dX, Zero);
-        const preserved_dY: Vec = @select(float, self.Y_push < self.X_push, dY, Zero);
+        const preserved_dX: Vec = @select(float, self.X_push < self.Y_push, dX, constants.ZERO_VEC);
+        const preserved_dY: Vec = @select(float, self.Y_push < self.X_push, dY, constants.ZERO_VEC);
 
-        self.physics_state.dX = self.colliding * (bounce_x * elasticity * bounce_dX + glide_x * preserved_dX) + (One - self.colliding) * (dX);
-        self.physics_state.dY = self.colliding * (bounce_y * elasticity * bounce_dY + glide_y * preserved_dY) + (One - self.colliding) * (dY);
+        self.physics_state.dX = self.colliding * (bounce_x * elasticity * bounce_dX + glide_x * preserved_dX) + (constants.ONE_VEC - self.colliding) * (dX);
+        self.physics_state.dY = self.colliding * (bounce_y * elasticity * bounce_dY + glide_y * preserved_dY) + (constants.ONE_VEC - self.colliding) * (dY);
 
-        self.physics_state.ddX = self.colliding * (-friction_coeff * preserved_dX) + (One - self.colliding) * (-drag_coeff * dX * @abs(dX));
-        self.physics_state.ddY = self.colliding * (-friction_coeff * preserved_dY) + (One - self.colliding) * (-drag_coeff * dY * @abs(dY) + gravity);
+        self.physics_state.ddX = self.colliding * (-friction_coeff * preserved_dX) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dX * @abs(dX));
+        self.physics_state.ddY = self.colliding * (-friction_coeff * preserved_dY) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dY * @abs(dY) + gravity);
     }
 
     // I realized a bit late that I don't actually need to simulate differential equations,
