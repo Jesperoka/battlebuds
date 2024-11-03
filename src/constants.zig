@@ -8,8 +8,19 @@ const VecI32 = @import("types.zig").VecI32;
 //                  Game
 // -----------------------------------------
 pub const MAX_NUM_PLAYERS = 4;
+
 pub const TIMESTEP_S: float = 1.0 / 60.0;
 pub const TIMESTEP_NS: u64 = 1.667e+7;
+pub const ANIMATION_SLOWDOWN_FACTOR: u64 = 3;
+
+pub const DEFAULT_RUN_VELOCITY: float = 5.9;
+pub const DEFAULT_RUN_ACCELERATION: float = 129.9;
+
+pub const DEFAULT_JUMP_SQUAT_FRAMES: u8 = 5;
+pub const DEFAULT_JUMP_VELOCITY: float = 9.9;
+pub const DEFAULT_DOUBLE_JUMP_VELOCITY: float = DEFAULT_JUMP_VELOCITY;
+pub const DEFAULT_HORIZONTAL_JUMP_VELOCITY: float = DEFAULT_RUN_VELOCITY;
+
 // -----------------------------------------
 
 //                  Window

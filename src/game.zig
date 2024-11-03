@@ -15,17 +15,22 @@ const constants = @import("constants.zig");
 const utils = @import("utils.zig");
 const stages = @import("stages.zig");
 
+// Private Types
 const float = @import("types.zig").float;
+const EntityMode = @import("assets.zig").EntityMode;
 
+// Public Types
 pub const Renderer = @import("render.zig").Renderer;
-pub const Entities = @import("render.zig").Entities;
+pub const DynamicEntities = @import("render.zig").DynamicEntities;
 pub const SimulatorState = @import("physics.zig").SimulatorState;
 
+// Main gameplay loop structure
 pub const Game = struct {
+    player_characters: [constants.MAX_NUM_PLAYERS]CharacterState = undefined,
     player_actions: [constants.MAX_NUM_PLAYERS]InputHandler.PlayerAction = undefined,
     input_handler: *InputHandler,
     renderer: *Renderer,
-    entities: *Entities,
+    dynamic_entities: *DynamicEntities,
     sim_state: *SimulatorState,
     stage_assets: stages.StageAssets,
     timer: std.time.Timer,
@@ -35,7 +40,7 @@ pub const Game = struct {
         comptime num_players: u8,
         comptime input_handler: *InputHandler,
         comptime renderer: *Renderer,
-        comptime entities: *Entities,
+        comptime dynamic_entities: *DynamicEntities,
         comptime sim_state: *SimulatorState,
     ) Game {
         // Random starting locations
@@ -47,7 +52,7 @@ pub const Game = struct {
         return Game{
             .input_handler = input_handler.init(num_players),
             .renderer = renderer.init(),
-            .entities = entities.init(num_players, &stages.stage0, indices),
+            .dynamic_entities = dynamic_entities.init(num_players, &stages.stage0, indices),
             .sim_state = sim_state.init(num_players, &stages.stage0, indices),
             .stage_assets = stages.stageAssets(0),
             .timer = std.time.Timer.start() catch unreachable,
@@ -63,8 +68,9 @@ pub const Game = struct {
         // TODO: make outer loop with stage selection;
         // self.stage_assets = stages.stageAssets(0);
 
-        // Zero player actions
+        // Zero player characters and actions
         for (0..self.num_players) |i| {
+            self.player_characters[i] = CharacterState{};
             self.player_actions[i] = InputHandler.PlayerAction{};
         }
 
@@ -92,33 +98,29 @@ pub const Game = struct {
     fn step(self: *Game, counter: u64) bool {
         const stop = handle_sdl_events();
 
-        // PLAYER INPUT
-        const jump_velocity: float = 9.9;
-        const move_acceleration: float = 129.9;
-        const move_velocity: float = 5.9;
         for (0..self.num_players) |player| {
+            const entity_mode, const movement = handle_character_action(
+                &self.player_characters[player],
+                self.dynamic_entities.modes[player],
+                self.player_actions[player],
+            );
 
-            // TODO: only allow jumping again after having made contact with surface
+            self.player_characters[player].resources.has_jump = self.sim_state.floor_collision[player] or self.player_characters[player].resources.has_jump;
 
-            const jump: float = if (self.player_actions[player].jump) jump_velocity else self.sim_state.physics_state.dY[player];
-            const move_vel: float, const move_acc: float = switch (self.player_actions[player].x_dir) {
-                .RIGHT => .{ move_velocity, move_acceleration },
-                .LEFT => .{ -move_velocity, -move_acceleration },
-                .NONE => .{ self.sim_state.physics_state.dX[player], 0 },
-            };
-            self.sim_state.physics_state.dY[player] = jump;
-            self.sim_state.physics_state.dX[player] = move_vel;
-            self.sim_state.physics_state.ddX[player] += move_acc;
+            self.dynamic_entities.modes[player] = entity_mode;
+            self.sim_state.physics_state.dY[player] = if (movement.jump) movement.vertical_velocity else self.sim_state.physics_state.dY[player];
+            self.sim_state.physics_state.dX[player] = movement.horizontal_velocity;
+            self.sim_state.physics_state.ddX[player] += movement.horizontal_acceleration;
         }
 
         self.sim_state.newtonianMotion(constants.TIMESTEP_S);
         self.sim_state.resolveCollisions(self.stage_assets.geometry);
         self.sim_state.gamePhysics();
 
-        self.entities.updateDynamicEntities(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
+        self.dynamic_entities.updatePosition(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
 
         self.renderer.draw(counter, self.stage_assets.background) catch unreachable;
-        self.renderer.drawEntitites(counter, self.entities) catch unreachable;
+        self.renderer.drawDynamicEntitites(counter, self.dynamic_entities) catch unreachable;
         self.renderer.draw(counter, self.stage_assets.foreground) catch unreachable;
         self.renderer.render();
 
@@ -139,6 +141,230 @@ pub const Game = struct {
         }
         return false;
     }
+
+    fn handle_character_action(
+        current_character_state: *CharacterState,
+        current_entity_mode: EntityMode,
+        action: InputHandler.PlayerAction,
+    ) struct { EntityMode, CharacterMovement } {
+        switch (current_entity_mode) {
+            .dont_load => {
+                current_character_state.mode = .RUNNING_RIGHT;
+                return .{ .{ .character_wurmple = .RUNNING_RIGHT }, .{} };
+            },
+            inline .character_wurmple,
+            .character_guy,
+            .character_test,
+            => |character| {
+                return base_character_state_transition(
+                    @TypeOf(character),
+                    current_character_state,
+                    action,
+                );
+            },
+            else => |character| {
+                std.debug.print("\n???: {any}", .{character});
+                unreachable;
+            },
+        }
+        unreachable;
+    }
+};
+
+// This function is a bit control-flow heavy, because it has to be.
+// It's the base-character state-machine transition function.
+// EntityMode determines the rendered texture, while CharacterState determines how EntityMode changes.
+// CharacterState also determines the change in PhysicsState that results from the character action.
+fn base_character_state_transition(
+    CharacterType: type,
+    current_character_state: *CharacterState,
+    action: InputHandler.PlayerAction,
+) struct { EntityMode, CharacterMovement } {
+    switch (current_character_state.mode) {
+        .NONE => {
+            // BUG: TODO - PROPER INIT!
+            // current_entity_mode.* = .{ .dont_load = .TEXTURE }; // TODO: init entity modes properly, so this can be uncommented and the stuff below deleted
+            if (action.jump) {
+                current_character_state.mode = .RUNNING_RIGHT;
+                return .{ .{ .character_wurmple = .RUNNING_RIGHT }, .{} };
+            } else {
+                current_character_state.mode = .RUNNING_RIGHT;
+                return .{ .{ .dont_load = .TEXTURE }, .{} };
+            }
+        },
+        .STANDING,
+        .RUNNING_LEFT,
+        .RUNNING_RIGHT,
+        => {
+            if (action.jump) {
+                current_character_state.mode = .JUMPING;
+                current_character_state.action_dependent_frame_counter = constants.DEFAULT_JUMP_SQUAT_FRAMES;
+                return .{ EntityMode.init(CharacterType, .JUMPING), .{} };
+            }
+            switch (action.x_dir) {
+                .NONE => {
+                    current_character_state.mode = .STANDING;
+                    return .{ EntityMode.init(CharacterType, .STANDING), .{} };
+                },
+                .LEFT => {
+                    current_character_state.mode = .RUNNING_LEFT;
+                    return .{
+                        EntityMode.init(CharacterType, .RUNNING_LEFT),
+                        .{
+                            .jump = false,
+                            .vertical_velocity = 0,
+                            .horizontal_velocity = -constants.DEFAULT_RUN_VELOCITY,
+                            .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION,
+                        },
+                    };
+                },
+                .RIGHT => {
+                    current_character_state.mode = .RUNNING_RIGHT;
+                    return .{
+                        EntityMode.init(CharacterType, .RUNNING_RIGHT),
+                        .{
+                            .jump = false,
+                            .vertical_velocity = 0,
+                            .horizontal_velocity = constants.DEFAULT_RUN_VELOCITY,
+                            .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION,
+                        },
+                    };
+                },
+            }
+        },
+        .JUMPING => {
+            if (current_character_state.action_dependent_frame_counter > 0) {
+                current_character_state.action_dependent_frame_counter -= 1;
+                return .{
+                    EntityMode.init(CharacterType, .JUMPING),
+                    .{},
+                };
+            } else {
+                current_character_state.resources.has_jump = false; // TODO: test if works
+                switch (action.x_dir) {
+                    .NONE => {
+                        current_character_state.mode = .FLYING_NEUTRAL;
+                        return .{
+                            EntityMode.init(CharacterType, .FLYING_NEUTRAL),
+                            .{
+                                .jump = true,
+                                .vertical_velocity = constants.DEFAULT_JUMP_VELOCITY,
+                                .horizontal_velocity = 0,
+                                .horizontal_acceleration = 0,
+                            },
+                        };
+                    },
+                    .LEFT => {
+                        current_character_state.mode = .FLYING_LEFT;
+                        return .{
+                            EntityMode.init(CharacterType, .FLYING_LEFT),
+                            .{
+                                .jump = true,
+                                .vertical_velocity = constants.DEFAULT_JUMP_VELOCITY,
+                                .horizontal_velocity = -constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
+                                .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
+                            },
+                        };
+                    },
+                    .RIGHT => {
+                        current_character_state.mode = .FLYING_RIGHT;
+                        return .{
+                            EntityMode.init(CharacterType, .FLYING_LEFT),
+                            .{
+                                .jump = true,
+                                .vertical_velocity = constants.DEFAULT_JUMP_VELOCITY,
+                                .horizontal_velocity = constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
+                                .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
+                            },
+                        };
+                    },
+                }
+            }
+        },
+        inline .FLYING_NEUTRAL,
+        .FLYING_LEFT,
+        .FLYING_RIGHT,
+        => {
+            var vertical_velocity: float = 0;
+            var jump: bool = false;
+            if (action.jump and current_character_state.resources.has_jump) {
+                // TODO: trigger double jump effect animation
+                jump = true;
+                current_character_state.resources.has_jump = false;
+                vertical_velocity = constants.DEFAULT_DOUBLE_JUMP_VELOCITY;
+            }
+            switch (action.x_dir) {
+                .NONE => {
+                    current_character_state.mode = .FLYING_NEUTRAL;
+                    return .{
+                        EntityMode.init(CharacterType, .FLYING_NEUTRAL),
+                        .{
+                            .jump = jump,
+                            .vertical_velocity = vertical_velocity,
+                            .horizontal_velocity = 0,
+                            .horizontal_acceleration = 0,
+                        },
+                    };
+                },
+                .LEFT => {
+                    current_character_state.mode = .FLYING_LEFT;
+                    return .{
+                        EntityMode.init(CharacterType, .FLYING_LEFT),
+                        .{
+                            .jump = jump,
+                            .vertical_velocity = vertical_velocity,
+                            .horizontal_velocity = -constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
+                            .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
+                        },
+                    };
+                },
+                .RIGHT => {
+                    current_character_state.mode = .FLYING_RIGHT;
+                    return .{
+                        EntityMode.init(CharacterType, .FLYING_RIGHT),
+                        .{
+                            .jump = jump,
+                            .vertical_velocity = vertical_velocity,
+                            .horizontal_velocity = constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
+                            .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
+                        },
+                    };
+                },
+            }
+        },
+    }
+    std.debug.print("wtf: {any}", .{current_character_state.mode});
+    unreachable;
+}
+
+const CharacterMode = enum(u8) {
+    NONE,
+    STANDING,
+    RUNNING_LEFT,
+    RUNNING_RIGHT,
+    JUMPING,
+    FLYING_NEUTRAL,
+    FLYING_LEFT,
+    FLYING_RIGHT,
+};
+
+const CharacterResources = packed struct {
+    health_points: u4 = 15,
+    ammo_count: u3 = 7,
+    has_jump: bool = true,
+};
+
+const CharacterState = packed struct {
+    resources: CharacterResources = .{},
+    mode: CharacterMode = .NONE,
+    action_dependent_frame_counter: u8 = 0,
+};
+
+const CharacterMovement = struct {
+    jump: bool = false,
+    vertical_velocity: float = 0,
+    horizontal_velocity: float = 0,
+    horizontal_acceleration: float = 0,
 };
 
 // InputHandling is going to be specific to my controllers for now.

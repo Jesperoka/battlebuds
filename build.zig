@@ -30,8 +30,16 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
+    // Make install step depend on running python script
+    const run_python_script = b.addSystemCommand(&[_][]const u8{ "python3", "src/assets.py" });
+    // b.getInstallStep().dependOn(&run_python_script.step);
+
+    // Make run command step depend on install step
     const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(&run_python_script.step);
     run_cmd.step.dependOn(b.getInstallStep());
+
+    // Make run step depend on run command
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 

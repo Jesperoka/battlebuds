@@ -6,7 +6,7 @@ const game = @import("game.zig");
 
 var input_handler = game.InputHandler{};
 var renderer = game.Renderer{};
-var entities = game.Entities{};
+var dynamic_entities = game.DynamicEntities{};
 var sim_state = game.SimulatorState{};
 
 pub fn main() !void {
@@ -16,7 +16,7 @@ pub fn main() !void {
         num_players,
         &input_handler,
         &renderer,
-        &entities,
+        &dynamic_entities,
         &sim_state,
     );
     defer battlebuds.deinit();

@@ -155,9 +155,9 @@ pub const stage0 = Stage(
     0,
     "Meteor",
     2,
-    .{ ID.SPACE_BACKGROUND, ID.SPACE_FLOOR },
+    .{ ID.STAGE_METEOR_BACKGROUND, ID.STAGE_METEOR_FLOOR },
     1,
-    .{ID.SPACE_PLATFORMS},
+    .{ID.STAGE_METEOR_PLATFORMS},
     .{
         .{ .x = 0, .y = -1.5 },
         .{ .x = 0, .y = -1.5 },

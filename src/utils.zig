@@ -36,12 +36,12 @@ pub const StaticMapError = error{
     MissingItem,
 };
 
-const uint = u8;
+const uint = u16;
 
 // Making my own static-size lookup table for fun and to learn a bit more comptime.
 // Insert the most frequently accessed items first (at back or front).
 // In the case of duplicates, the first match is returned. Up to user not to be stupid.
-pub fn StaticMap(comptime len: uint, comptime T_things: type, comptime T_names: type) struct {
+pub fn StaticMap(comptime len: uint, comptime T_names: type, comptime T_things: type) struct {
     comptime len: uint = len,
     names: [len]T_names = .{undefined} ** len,
     things: [len]T_things = undefined,
@@ -166,7 +166,7 @@ test "StaticMap functionality" {
         THREE,
     };
 
-    var my_map_2 = StaticMap(8, TempStruct, MyEnum);
+    var my_map_2 = StaticMap(8, MyEnum, TempStruct);
 
     try my_map_2.insert(MyEnum.EMPTY, TempStruct{}, false);
     try my_map_2.insert(MyEnum.ONE, TempStruct{ .x = 1, .y = 0.43 }, false);

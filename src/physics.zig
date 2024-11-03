@@ -34,7 +34,7 @@ fn vecRightOrth(X: Vec, Y: Vec) struct { Vec, Vec } {
     return .{ Y, -X };
 }
 
-const PhysicsState = struct {
+pub const PhysicsState = struct {
     X: Vec = @splat(0),
     Y: Vec = @splat(0),
     dX: Vec = @splat(0),
@@ -98,8 +98,10 @@ pub const SimulatorState = struct {
     X_push: Vec = constants.ZERO_VEC,
     Y_push: Vec = constants.ZERO_VEC,
 
+    floor_collision: VecBool = constants.FALSE_VEC,
+
     pub fn init(
-        comptime self: *SimulatorState,
+        self: *SimulatorState,
         comptime num_players: u8,
         comptime stage: *const @TypeOf(stages.stage0),
         shuffled_indices: [num_players]u8,
@@ -299,6 +301,11 @@ pub const SimulatorState = struct {
                     const x_shape, const y_shape = shape.vertexCentroid();
                     const X_push, const Y_push = pushAway(X_push_pre_flip, Y_push_pre_flip, self.physics_state.X, self.physics_state.Y, @splat(x_shape), @splat(y_shape));
 
+                    // TODO: IDEA: Y_push is upward and greater than X_push => get your jump back.
+                    // This might be a bit quirky, since on steeply angled planes, whether you get your jump
+                    // back or not depends on the velocity and direction of collision.
+                    // But it might also actually be a fun mechanic...
+
                     colliding = vecOr(colliding, new_collision);
                     X_minimal_push += X_push;
                     Y_minimal_push += Y_push;
@@ -312,6 +319,8 @@ pub const SimulatorState = struct {
 
         self.X_push = X_minimal_push;
         self.Y_push = Y_minimal_push;
+
+        self.floor_collision = vecAnd(colliding, vecAnd(Y_minimal_push > constants.ZERO_VEC, Y_minimal_push >= @abs(X_minimal_push)));
     }
 
     pub fn gamePhysics(self: *SimulatorState) void {
