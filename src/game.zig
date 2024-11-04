@@ -102,10 +102,11 @@ pub const Game = struct {
             const entity_mode, const movement = handle_character_action(
                 &self.player_characters[player],
                 self.dynamic_entities.modes[player],
+                self.sim_state.floor_collision[player],
                 self.player_actions[player],
             );
 
-            self.player_characters[player].resources.has_jump = self.sim_state.floor_collision[player] or self.player_characters[player].resources.has_jump;
+            // self.player_characters[player].resources.has_jump = self.sim_state.floor_collision[player] or self.player_characters[player].resources.has_jump;
 
             self.dynamic_entities.modes[player] = entity_mode;
             self.sim_state.physics_state.dY[player] = if (movement.jump) movement.vertical_velocity else self.sim_state.physics_state.dY[player];
@@ -145,8 +146,11 @@ pub const Game = struct {
     fn handle_character_action(
         current_character_state: *CharacterState,
         current_entity_mode: EntityMode,
+        floor_collision: bool,
         action: InputHandler.PlayerAction,
     ) struct { EntityMode, CharacterMovement } {
+        current_character_state.resources.has_jump = floor_collision or current_character_state.resources.has_jump;
+
         switch (current_entity_mode) {
             .dont_load => {
                 current_character_state.mode = .RUNNING_RIGHT;
@@ -159,6 +163,7 @@ pub const Game = struct {
                 return base_character_state_transition(
                     @TypeOf(character),
                     current_character_state,
+                    floor_collision,
                     action,
                 );
             },
@@ -178,6 +183,7 @@ pub const Game = struct {
 fn base_character_state_transition(
     CharacterType: type,
     current_character_state: *CharacterState,
+    floor_collision: bool,
     action: InputHandler.PlayerAction,
 ) struct { EntityMode, CharacterMovement } {
     switch (current_character_state.mode) {
@@ -196,6 +202,9 @@ fn base_character_state_transition(
         .RUNNING_LEFT,
         .RUNNING_RIGHT,
         => {
+
+            // TODO: if enough frames in a row don't have floor_collision, transition to FLYING_XXXX depending on movement.
+
             if (action.jump) {
                 current_character_state.mode = .JUMPING;
                 current_character_state.action_dependent_frame_counter = constants.DEFAULT_JUMP_SQUAT_FRAMES;
@@ -240,7 +249,7 @@ fn base_character_state_transition(
                     .{},
                 };
             } else {
-                current_character_state.resources.has_jump = false; // TODO: test if works
+                current_character_state.action_dependent_frame_counter = constants.DEFAULT_JUMP_AGAIN_DELAY_FRAMES;
                 switch (action.x_dir) {
                     .NONE => {
                         current_character_state.mode = .FLYING_NEUTRAL;
@@ -287,15 +296,18 @@ fn base_character_state_transition(
         => {
             var vertical_velocity: float = 0;
             var jump: bool = false;
-            if (action.jump and current_character_state.resources.has_jump) {
-                // TODO: trigger double jump effect animation
-                jump = true;
+
+            if (action.jump and current_character_state.resources.has_jump and (current_character_state.action_dependent_frame_counter <= 0)) {
+                jump = true; // TODO: trigger double jump effect animation
                 current_character_state.resources.has_jump = false;
                 vertical_velocity = constants.DEFAULT_DOUBLE_JUMP_VELOCITY;
+            } else {
+                current_character_state.action_dependent_frame_counter -|= 1;
             }
+
             switch (action.x_dir) {
                 .NONE => {
-                    current_character_state.mode = .FLYING_NEUTRAL;
+                    current_character_state.mode = if (!floor_collision) .FLYING_NEUTRAL else .STANDING;
                     return .{
                         EntityMode.init(CharacterType, .FLYING_NEUTRAL),
                         .{
@@ -307,7 +319,7 @@ fn base_character_state_transition(
                     };
                 },
                 .LEFT => {
-                    current_character_state.mode = .FLYING_LEFT;
+                    current_character_state.mode = if (!floor_collision) .FLYING_LEFT else .RUNNING_LEFT;
                     return .{
                         EntityMode.init(CharacterType, .FLYING_LEFT),
                         .{
@@ -319,7 +331,7 @@ fn base_character_state_transition(
                     };
                 },
                 .RIGHT => {
-                    current_character_state.mode = .FLYING_RIGHT;
+                    current_character_state.mode = if (!floor_collision) .FLYING_RIGHT else .RUNNING_RIGHT;
                     return .{
                         EntityMode.init(CharacterType, .FLYING_RIGHT),
                         .{
