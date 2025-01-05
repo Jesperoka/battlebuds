@@ -10,10 +10,7 @@ var dynamic_entities = game.DynamicEntities{};
 var sim_state = game.SimulatorState{};
 
 pub fn main() !void {
-    const num_players = 2;
-
     var battlebuds = game.Game.init(
-        num_players,
         &input_handler,
         &renderer,
         &dynamic_entities,

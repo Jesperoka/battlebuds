@@ -25,7 +25,7 @@ pub fn range(comptime T: type, comptime n: T, comptime N: T) [N - n]T {
     comptime assert(n < N, "Range must go from low to high.");
     var ints: [N - n]T = undefined;
     for (n..N, 0..N - n) |int, i| {
-        ints[i] = int;
+        ints[i] = @intCast(int);
     }
 
     return ints;

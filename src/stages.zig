@@ -2,6 +2,8 @@
 const constants = @import("constants.zig");
 const utils = @import("utils.zig");
 
+const HorizontalDirection = @import("game.zig").HorizontalDirection;
+const fields = @import("std").meta.fields;
 const float = @import("types.zig").float;
 const ID = @import("assets.zig").ID;
 
@@ -106,7 +108,7 @@ pub const Position = struct {
 };
 
 pub fn Stage(
-    comptime id: u8,
+    comptime id: StageID,
     comptime name: []const u8,
     comptime num_background_assets: comptime_int,
     comptime background_asset_ids: [num_background_assets]ID,
@@ -117,7 +119,7 @@ pub fn Stage(
     comptime geometry: [num_shapes]Shape,
 ) type {
     return struct {
-        id: u8 = id,
+        id: StageID = id,
         name: []const u8 = name,
         background_asset_ids: [num_background_assets]ID = background_asset_ids,
         foreground_asset_ids: [num_foreground_assets]ID = foreground_asset_ids,
@@ -126,40 +128,65 @@ pub fn Stage(
     };
 }
 
-pub const StageUnion = union(enum) {
-    stage0: @TypeOf(stage0),
-};
-
 pub const StageAssets = struct {
     geometry: []const Shape,
     background: []const ID,
     foreground: []const ID,
 };
 
-// TODO: use enum
-pub fn stageAssets(i: usize) StageAssets {
-    switch (i) {
-        0 => return StageAssets{
-            .geometry = &stage0.geometry,
-            .background = &stage0.background_asset_ids,
-            .foreground = &stage0.foreground_asset_ids,
+pub const StageID = enum(i16) {
+    Meteor,
+    Test00,
+
+    // pub fn next(self: StageID) StageID {
+    //     return @enumFromInt((@intFromEnum(self) + 1) % fields(StageID).len);
+    // }
+
+    // pub fn previous(self: StageID) StageID {
+    //     return @enumFromInt((@intFromEnum(self) - 1) % fields(StageID).len);
+    // }
+
+    pub fn switch_stage(self: StageID, x_dir: HorizontalDirection) StageID {
+        const number_of_stages: i16 = @intCast(fields(StageID).len);
+
+        return @enumFromInt(@mod(@intFromEnum(self) + @intFromEnum(x_dir), number_of_stages));
+    }
+};
+
+pub fn stageAssets(stage_id: StageID) StageAssets {
+    switch (stage_id) {
+        .Meteor => return StageAssets{
+            .geometry = &meteor.geometry,
+            .background = &meteor.background_asset_ids,
+            .foreground = &meteor.foreground_asset_ids,
         },
-        else => unreachable,
+        .Test00 => return StageAssets{
+            .geometry = &test00.geometry,
+            .background = &test00.background_asset_ids,
+            .foreground = &test00.foreground_asset_ids,
+        },
+    }
+}
+
+pub fn startingPositions(stage_id: StageID) [constants.MAX_NUM_PLAYERS]Position {
+    switch (stage_id) {
+        .Meteor => return meteor.starting_positions,
+        .Test00 => return test00.starting_positions,
     }
 }
 
 const below_screen = 1080 + 200;
 
 // TODO MAYBE: create a stage creator in python
-pub const stage0 = Stage(
-    0,
+pub const meteor = Stage(
+    .Meteor,
     "Meteor",
     2,
     .{ ID.STAGE_METEOR_BACKGROUND, ID.STAGE_METEOR_FLOOR },
     1,
     .{ID.STAGE_METEOR_PLATFORMS},
     .{
-        .{ .x = 0, .y = -1.5 },
+        .{ .x = 0, .y = -1.5 }, // TODO: find good starting positions.
         .{ .x = 0, .y = -1.5 },
         .{ .x = 0, .y = 0 },
         .{ .x = 0, .y = 0 },
@@ -329,6 +356,54 @@ pub const stage0 = Stage(
                 fromPixelY(223),
                 fromPixelY(371),
                 fromPixelY(356),
+            },
+        } },
+    },
+){};
+
+pub const test00 = Stage(
+    .Test00,
+    "Test00",
+    2,
+    .{ ID.STAGE_TEST00_BACKGROUND, ID.STAGE_TEST00_PLATFORMS },
+    0,
+    .{},
+    .{
+        .{ .x = 0, .y = -1.5 }, // TODO: find good starting positions.
+        .{ .x = 0, .y = -1.5 },
+        .{ .x = 0, .y = 0 },
+        .{ .x = 0, .y = 0 },
+    },
+    2,
+    .{
+        // Bottom platform
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(1555),
+                fromPixelX(429),
+                fromPixelX(429),
+                fromPixelX(1555),
+            },
+            .Y = .{
+                fromPixelY(834),
+                fromPixelY(834),
+                fromPixelY(below_screen),
+                fromPixelY(below_screen),
+            },
+        } },
+        // Top platform
+        Shape{ .quad = .{
+            .X = .{
+                fromPixelX(1369),
+                fromPixelX(620),
+                fromPixelX(620),
+                fromPixelX(1369),
+            },
+            .Y = .{
+                fromPixelY(559),
+                fromPixelY(559),
+                fromPixelY(573),
+                fromPixelY(573),
             },
         } },
     },

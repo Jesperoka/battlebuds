@@ -32,31 +32,23 @@ pub const Game = struct {
     renderer: *Renderer,
     dynamic_entities: *DynamicEntities,
     sim_state: *SimulatorState,
-    stage_assets: stages.StageAssets,
+    stage_assets: stages.StageAssets = undefined,
     timer: std.time.Timer,
     num_players: u8,
 
     pub fn init(
-        comptime num_players: u8,
         comptime input_handler: *InputHandler,
         comptime renderer: *Renderer,
         comptime dynamic_entities: *DynamicEntities,
         comptime sim_state: *SimulatorState,
     ) Game {
-        // Random starting locations
-        const seed = @as(u64, @intCast(std.time.microTimestamp()));
-        var prng = std.Random.DefaultPrng.init(seed);
-        var indices = comptime utils.range(u8, 0, num_players);
-        prng.random().shuffle(u8, &indices);
-
         return Game{
-            .input_handler = input_handler.init(num_players),
+            .input_handler = input_handler.init(),
             .renderer = renderer.init(),
-            .dynamic_entities = dynamic_entities.init(num_players, &stages.stage0, indices),
-            .sim_state = sim_state.init(num_players, &stages.stage0, indices),
-            .stage_assets = stages.stageAssets(0),
+            .dynamic_entities = dynamic_entities,
+            .sim_state = sim_state,
             .timer = std.time.Timer.start() catch unreachable,
-            .num_players = num_players,
+            .num_players = input_handler.num_devices, // Relies on ordering of init.
         };
     }
     pub fn deinit(self: *Game) void {
@@ -65,39 +57,93 @@ pub const Game = struct {
     }
 
     pub fn run(self: *Game) void {
-        // TODO: make outer loop with stage selection;
-        // self.stage_assets = stages.stageAssets(0);
+        game_outer_loop: while (true) {
+            var counter: u64 = 0;
 
-        // Zero player characters and actions
-        for (0..self.num_players) |i| {
-            self.player_characters[i] = CharacterState{};
-            self.player_actions[i] = InputHandler.PlayerAction{};
-        }
+            // Select stage
+            var current_stage: stages.StageID = .Meteor;
 
-        var stop = false;
-        var counter: u64 = 0;
+            stage_selection_loop: while (true) {
+                self.timer.reset();
+                defer self.read_player_inputs_while_waiting_for_end_of_frame();
 
-        // Start match
-        while (!stop) {
-            self.timer.reset();
-            stop = self.step(counter);
+                current_stage = current_stage.switch_stage(self.player_actions[0].x_dir);
 
-            // Always read player inputs
-            var atleast_once = true;
-            while (self.timer.read() < constants.TIMESTEP_NS or atleast_once) {
-                atleast_once = false;
-                const reports = self.input_handler.read_input();
-                for (reports, 0..self.num_players) |report, i| {
-                    self.player_actions[i] = InputHandler.action(report);
-                }
+                const quit_game = handle_sdl_events();
+                if (quit_game) break :game_outer_loop;
+
+                // TODO: render the stage selection screen.
+
+                if (self.player_actions[0].jump) break :stage_selection_loop;
+
+                // TODO: allow button press to de- and re-init self.input_handler.
+                // also allow button press on any of the controllers to add it to
+                // self.num_players. Might be complicated a bit by ordering of reports.
+                // self.input_handler.read_input() uses self.input_handler.devices array
+                // to determine player ordering, which is set during init, and probably
+                // determined by port position in hardware.
             }
-            counter += 1;
+
+            // Select Characters
+            // TODO: implement + num_player detection.
+
+            self.num_players = 2;
+
+            // This is the actual character assignments.
+            // NOTE: can maybe use EntityMode.init() here to default init mode of all characters.
+            const entity_modes: [constants.MAX_NUM_PLAYERS]EntityMode = .{
+                .{ .character_test = .STANDING },
+                .{ .character_wurmple = .STANDING },
+                .{ .dont_load = .TEXTURE },
+                .{ .dont_load = .TEXTURE },
+            };
+
+            self.prepare_for_match(current_stage, entity_modes);
+
+            // Play Start Countdown Animation
+            // TODO: implement
+
+            // Zero player characters and actions
+            for (0..self.num_players) |i| {
+                self.player_characters[i] = CharacterState{};
+                self.player_actions[i] = InputHandler.PlayerAction{};
+            }
+
+            // Start match
+            var stop = false;
+            while (!stop) {
+                self.timer.reset();
+                defer self.read_player_inputs_while_waiting_for_end_of_frame();
+
+                stop = self.step(counter);
+
+                const quit_game = handle_sdl_events();
+                if (quit_game) break :game_outer_loop;
+
+                counter += 1;
+
+                // NOTE: if I want to have uncapped frame rate, I need to only
+                // update counter based on a fixed frame-rate time, so animations
+                // still play at the correct frame rate, and then I just need to
+                // pass the actual time between frames to the physics functions.
+            }
+        }
+    }
+
+    // Always reads player inputs atleast once.
+    fn read_player_inputs_while_waiting_for_end_of_frame(self: *Game) void {
+        var atleast_once = true;
+        while (self.timer.read() < constants.TIMESTEP_NS or atleast_once) {
+            atleast_once = false;
+
+            const reports = self.input_handler.read_input();
+            for (reports, 0..self.num_players) |report, i| {
+                self.player_actions[i] = InputHandler.action(report);
+            }
         }
     }
 
     fn step(self: *Game, counter: u64) bool {
-        const stop = handle_sdl_events();
-
         for (0..self.num_players) |player| {
             const entity_mode, const movement = handle_character_action(
                 &self.player_characters[player],
@@ -105,8 +151,6 @@ pub const Game = struct {
                 self.sim_state.floor_collision[player],
                 self.player_actions[player],
             );
-
-            // self.player_characters[player].resources.has_jump = self.sim_state.floor_collision[player] or self.player_characters[player].resources.has_jump;
 
             self.dynamic_entities.modes[player] = entity_mode;
             self.sim_state.physics_state.dY[player] = if (movement.jump) movement.vertical_velocity else self.sim_state.physics_state.dY[player];
@@ -125,7 +169,21 @@ pub const Game = struct {
         self.renderer.draw(counter, self.stage_assets.foreground) catch unreachable;
         self.renderer.render();
 
-        return stop;
+        return false; // Temporary solution until game has win-condition.
+        // return stop;
+    }
+
+    fn prepare_for_match(self: *Game, stage_id: stages.StageID, entity_modes: [constants.MAX_NUM_PLAYERS]EntityMode) void {
+        const seed = @as(u64, @intCast(std.time.microTimestamp()));
+        var prng = std.Random.DefaultPrng.init(seed);
+        var shuffled_indices = utils.range(u8, 0, constants.MAX_NUM_PLAYERS);
+        prng.random().shuffle(u8, &shuffled_indices);
+
+        const starting_positions = stages.startingPositions(stage_id);
+
+        self.dynamic_entities.init(starting_positions, shuffled_indices, entity_modes);
+        self.sim_state.init(starting_positions, shuffled_indices);
+        self.stage_assets = stages.stageAssets(stage_id);
     }
 
     fn handle_sdl_events() bool {
@@ -152,7 +210,7 @@ pub const Game = struct {
         current_character_state.resources.has_jump = floor_collision or current_character_state.resources.has_jump;
 
         switch (current_entity_mode) {
-            .dont_load => {
+            .dont_load => { // TODO: proper init so this can be handled to return DontLoadMode.
                 current_character_state.mode = .RUNNING_RIGHT;
                 return .{ .{ .character_wurmple = .RUNNING_RIGHT }, .{} };
             },
@@ -379,6 +437,20 @@ const CharacterMovement = struct {
     horizontal_acceleration: float = 0,
 };
 
+pub const HorizontalDirection = enum(i2) {
+    LEFT = -1,
+    RIGHT = 1,
+    NONE = 0,
+};
+
+const PlaneAxialDirection = enum {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT,
+    NONE,
+};
+
 // InputHandling is going to be specific to my controllers for now.
 pub const InputHandler = struct {
     const vendor_id: c_ushort = 0x081F;
@@ -388,9 +460,9 @@ pub const InputHandler = struct {
     const report_num_bytes = 8; // + 1 if numbered report
 
     const PlayerAction = struct {
-        x_dir: enum { LEFT, RIGHT, NONE } = .NONE,
+        x_dir: HorizontalDirection = .NONE,
         jump: bool = false,
-        shoot_dir: enum { UP, DOWN, LEFT, RIGHT, NONE } = .NONE,
+        shoot_dir: PlaneAxialDirection = .NONE,
     };
 
     const UsbGamepadReport = packed struct {
@@ -418,8 +490,7 @@ pub const InputHandler = struct {
     devices: [max_num_devices]*hidapi.hid_device = undefined,
     num_devices: u8 = undefined,
 
-    fn init(comptime self: *InputHandler, comptime num_players: u8) *InputHandler {
-        self.num_devices = num_players;
+    fn init(comptime self: *InputHandler) *InputHandler {
         utils.assert(hidapi.hid_init() == 0, "hid_init() failed.");
 
         const device_info = hidapi.hid_enumerate(vendor_id, product_id);
@@ -427,14 +498,15 @@ pub const InputHandler = struct {
 
         var current = device_info;
 
-        var j: usize = 0;
+        var index_past_latest_discovered_device: usize = 0;
         while (current) |dev| {
             if (dev.*.vendor_id == vendor_id and dev.*.product_id == product_id) {
-                self.devices[j] = hidapi.hid_open_path(dev.*.path).?;
-                j += 1;
+                self.devices[index_past_latest_discovered_device] = hidapi.hid_open_path(dev.*.path).?;
+                index_past_latest_discovered_device += 1;
             }
             current = dev.*.next;
         }
+        self.num_devices = @intCast(index_past_latest_discovered_device);
 
         for (0..self.num_devices) |i| {
             utils.assert(hidapi.hid_read(self.devices[i], &self.report_data[i], report_num_bytes) != -1, "Could not hid_read() device during initialization()");

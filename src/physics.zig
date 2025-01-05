@@ -102,16 +102,13 @@ pub const SimulatorState = struct {
 
     pub fn init(
         self: *SimulatorState,
-        comptime num_players: u8,
-        comptime stage: *const @TypeOf(stages.stage0),
-        shuffled_indices: [num_players]u8,
-    ) *SimulatorState {
-        for (shuffled_indices, 0..num_players) |idx, i| {
-            self.physics_state.X[i] = @as(float, @floatCast(stage.starting_positions[idx].x));
-            self.physics_state.Y[i] = @as(float, @floatCast(stage.starting_positions[idx].y));
+        starting_positions: [constants.MAX_NUM_PLAYERS]stages.Position,
+        shuffled_indices: [constants.MAX_NUM_PLAYERS]u8,
+    ) void {
+        for (shuffled_indices, 0..constants.MAX_NUM_PLAYERS) |idx, i| {
+            self.physics_state.X[i] = starting_positions[idx].x;
+            self.physics_state.Y[i] = starting_positions[idx].y;
         }
-
-        return self;
     }
 
     fn posVelAccTimeRelation(dt: float, p0: Vec, v0: Vec, a: Vec) Vec {

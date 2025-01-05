@@ -70,18 +70,16 @@ pub const DynamicEntities = struct {
     modes: [NUM]assets.EntityMode = .{.{ .dont_load = assets.DontLoadMode.TEXTURE }} ** NUM,
 
     pub inline fn init(
-        comptime self: *DynamicEntities,
-        comptime num_players: u8,
-        comptime stage: *const @TypeOf(stages.stage0),
-        shuffled_indices: [num_players]u8,
-    ) *DynamicEntities {
-        for (shuffled_indices, 0..num_players) |idx, i| {
-            self.X[i] = toPixelX(stage.starting_positions[idx].x);
-            self.Y[i] = toPixelY(stage.starting_positions[idx].y);
-            self.modes[i] = .{ .character_wurmple = .RUNNING_RIGHT };
+        self: *DynamicEntities,
+        starting_positions: [constants.MAX_NUM_PLAYERS]stages.Position,
+        shuffled_indices: [constants.MAX_NUM_PLAYERS]u8,
+        entity_modes: [constants.MAX_NUM_PLAYERS]assets.EntityMode,
+    ) void {
+        for (shuffled_indices, 0..constants.MAX_NUM_PLAYERS) |idx, i| {
+            self.X[i] = toPixelX(starting_positions[idx].x);
+            self.Y[i] = toPixelY(starting_positions[idx].y);
+            self.modes[i] = entity_modes[i];
         }
-
-        return self;
     }
 
     pub fn updatePosition(self: *DynamicEntities, X: Vec, Y: Vec) void {
