@@ -136,10 +136,11 @@ pub const Renderer = struct {
         SDL.SDL_Quit();
     }
 
-    pub fn drawDynamicEntitites(
+    pub fn draw_dynamic_entities(
         self: *Renderer,
         counter: usize,
         dynamic_entities: *DynamicEntities,
+        comptime slowdown_factor: usize,
     ) !void {
         const N = DynamicEntities.NUM;
 
@@ -152,7 +153,7 @@ pub const Renderer = struct {
             if (id == .DONT_LOAD_TEXTURE) continue;
 
             const textures = try Textures.map.lookup(id, false);
-            const animation_counter = @divFloor(counter, constants.ANIMATION_SLOWDOWN_FACTOR);
+            const animation_counter = @divFloor(counter, slowdown_factor);
             const texture = textures[animation_counter % textures.len];
 
             _ = SDL.SDL_RenderCopy(
@@ -169,17 +170,28 @@ pub const Renderer = struct {
         }
     }
 
-    pub fn draw(
+    pub fn draw_looping_animations(
         self: *Renderer,
         counter: usize,
-        IDs: []const assets.ID,
+        asset_ids: []const assets.ID,
+        comptime slowdown_factor: usize,
     ) !void {
-        for (IDs) |id| {
-            const textures = try Textures.map.lookup(id, false);
-            const animation_counter = @divFloor(counter, constants.ANIMATION_SLOWDOWN_FACTOR);
-            const texture = textures[animation_counter % textures.len];
-            _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
+        for (asset_ids) |asset_id| {
+            const animation_counter = @divFloor(counter, slowdown_factor);
+            self.draw_animation_frame(animation_counter, asset_id) catch unreachable;
+            // const textures = try Textures.map.lookup(asset_id, false);
+            // const texture = textures[animation_counter % textures.len];
+            // _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
         }
+    }
+    pub fn draw_animation_frame(
+        self: *Renderer,
+        frame_index: usize,
+        asset_id: assets.ID,
+    ) !void {
+        const textures = try Textures.map.lookup(asset_id, false);
+        const texture = textures[frame_index % textures.len];
+        _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
     }
 
     pub fn render(self: *Renderer) void {

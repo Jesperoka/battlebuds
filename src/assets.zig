@@ -46,6 +46,8 @@ pub const ID = enum(u16) {
     STAGE_METEOR_FLOOR,
     STAGE_TEST00_BACKGROUND,
     STAGE_TEST00_PLATFORMS,
+    MENU_WAITING_FORINPUT,
+    MENU_STAGE_SELECTED,
 
     pub inline fn int(id: ID) u16 {
         return @intFromEnum(id);
@@ -100,6 +102,12 @@ pub fn IDFromEntityMode(mode: EntityMode) ID {
             .BACKGROUND => return ID.STAGE_TEST00_BACKGROUND,
             .PLATFORMS => return ID.STAGE_TEST00_PLATFORMS,
         },
+        .menu_waiting => |menu_waiting_mode| switch (menu_waiting_mode) {
+            .FORINPUT => return ID.MENU_WAITING_FORINPUT,
+        },
+        .menu_stage => |menu_stage_mode| switch (menu_stage_mode) {
+            .SELECTED => return ID.MENU_STAGE_SELECTED,
+        },
     }
     unreachable; // shouldn't happen
 }
@@ -112,6 +120,8 @@ pub const EntityMode = union(enum(u16)) {
     dont_load: DontLoadMode,
     stage_meteor: StageMeteorMode,
     stage_test00: StageTest00Mode,
+    menu_waiting: MenuWaitingMode,
+    menu_stage: MenuStageMode,
 
     pub fn init(comptime Type: type, comptime val: @TypeOf(.enum_literal)) @This() {
         switch (Type) {
@@ -122,6 +132,8 @@ pub const EntityMode = union(enum(u16)) {
             DontLoadMode => |Enum| return @unionInit(@This(), "dont_load", @as(Enum, val)),
             StageMeteorMode => |Enum| return @unionInit(@This(), "stage_meteor", @as(Enum, val)),
             StageTest00Mode => |Enum| return @unionInit(@This(), "stage_test00", @as(Enum, val)),
+            MenuWaitingMode => |Enum| return @unionInit(@This(), "menu_waiting", @as(Enum, val)),
+            MenuStageMode => |Enum| return @unionInit(@This(), "menu_stage", @as(Enum, val)),
 
             else => |mode| {
                 print("\nUnexpected entity mode: {any}\n", .{mode});
@@ -180,7 +192,15 @@ pub const StageTest00Mode = enum(u16) {
     PLATFORMS,
 };
 
-pub const ALL: [115]Asset = .{
+pub const MenuWaitingMode = enum(u16) {
+    FORINPUT,
+};
+
+pub const MenuStageMode = enum(u16) {
+    SELECTED,
+};
+
+pub const ALL: [128]Asset = .{
     .{ .path = "assets/Character/Test/Flying_Right/1.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/Character/Test/Flying_Right/2.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/Character/Test/Flying_Right/3.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
@@ -296,9 +316,22 @@ pub const ALL: [115]Asset = .{
     .{ .path = "assets/Stage/Meteor/Floor/1.png", .id = .STAGE_METEOR_FLOOR },
     .{ .path = "assets/Stage/Test00/Background/1.png", .id = .STAGE_TEST00_BACKGROUND },
     .{ .path = "assets/Stage/Test00/Platforms/1.png", .id = .STAGE_TEST00_PLATFORMS },
+    .{ .path = "assets/Menu/Waiting/ForInput/1.png", .id = .MENU_WAITING_FORINPUT },
+    .{ .path = "assets/Menu/Stage/Selected/1.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/2.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/3.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/4.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/5.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/6.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/7.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/8.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/9.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/10.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/11.png", .id = .MENU_STAGE_SELECTED },
+    .{ .path = "assets/Menu/Stage/Selected/12.png", .id = .MENU_STAGE_SELECTED },
 };
 
-pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 1, 1, 1, 1, 1, 1, 1 };
+pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 1, 1, 1, 1, 1, 1, 1, 1, 12 };
 
 // Storage for textures to be initialized at runtime.
 var character_test_flying_right_textures: [5]Texture = undefined;
@@ -329,6 +362,8 @@ var stage_meteor_platforms_textures: [1]Texture = undefined;
 var stage_meteor_floor_textures: [1]Texture = undefined;
 var stage_test00_background_textures: [1]Texture = undefined;
 var stage_test00_platforms_textures: [1]Texture = undefined;
+var menu_waiting_forinput_textures: [1]Texture = undefined;
+var menu_stage_selected_textures: [12]Texture = undefined;
 
 pub var texture_slices: [ID.size()][]Texture = .{
     &character_test_flying_right_textures,
@@ -359,4 +394,6 @@ pub var texture_slices: [ID.size()][]Texture = .{
     &stage_meteor_floor_textures,
     &stage_test00_background_textures,
     &stage_test00_platforms_textures,
+    &menu_waiting_forinput_textures,
+    &menu_stage_selected_textures,
 };

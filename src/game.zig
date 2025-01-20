@@ -18,6 +18,8 @@ const stages = @import("stages.zig");
 // Private Types
 const float = @import("types.zig").float;
 const EntityMode = @import("assets.zig").EntityMode;
+const ID = @import("assets.zig").ID;
+const ASSETS_PER_ID = @import("assets.zig").ASSETS_PER_ID;
 
 // Public Types
 pub const Renderer = @import("render.zig").Renderer;
@@ -67,12 +69,14 @@ pub const Game = struct {
                 self.timer.reset();
                 defer self.read_player_inputs_while_waiting_for_end_of_frame();
 
+                // TODO: play stage switch animation.
                 current_stage = current_stage.switch_stage(self.player_actions[0].x_dir);
 
                 const quit_game = handle_sdl_events();
                 if (quit_game) break :game_outer_loop;
 
-                // TODO: render the stage selection screen.
+                self.renderer.draw_looping_animations(counter, &[_]ID{ID.MENU_WAITING_FORINPUT}, constants.TIMESTEP_NS) catch unreachable;
+                self.renderer.render();
 
                 if (self.player_actions[0].jump) break :stage_selection_loop;
 
@@ -83,6 +87,8 @@ pub const Game = struct {
                 // to determine player ordering, which is set during init, and probably
                 // determined by port position in hardware.
             }
+
+            self.play_stage_selected_animation(current_stage, counter, constants.STAGE_SELECT_ANIMATION_TIMESTEP_NS);
 
             // Select Characters
             // TODO: implement + num_player detection.
@@ -143,6 +149,24 @@ pub const Game = struct {
         }
     }
 
+    fn play_stage_selected_animation(self: *Game, selected_stage: stages.StageID, global_counter: u64, frame_interval_ns: u64) void {
+        const FRAME_TO_SHOW_STAGE = 7;
+        const stage_assets = stages.stageAssets(selected_stage);
+
+        for (0..ASSETS_PER_ID[ID.MENU_STAGE_SELECTED.int()]) |local_counter| {
+            self.timer.reset();
+
+            if (local_counter >= FRAME_TO_SHOW_STAGE) {
+                self.renderer.draw_looping_animations(global_counter + local_counter, stage_assets.background, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
+                self.renderer.draw_looping_animations(global_counter + local_counter, stage_assets.foreground, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
+            }
+            self.renderer.draw_animation_frame(local_counter, ID.MENU_STAGE_SELECTED) catch unreachable;
+
+            self.renderer.render();
+            while (self.timer.read() < frame_interval_ns) {} // Do nothing.
+        }
+    }
+
     fn step(self: *Game, counter: u64) bool {
         for (0..self.num_players) |player| {
             const entity_mode, const movement = handle_character_action(
@@ -164,9 +188,9 @@ pub const Game = struct {
 
         self.dynamic_entities.updatePosition(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
 
-        self.renderer.draw(counter, self.stage_assets.background) catch unreachable;
-        self.renderer.drawDynamicEntitites(counter, self.dynamic_entities) catch unreachable;
-        self.renderer.draw(counter, self.stage_assets.foreground) catch unreachable;
+        self.renderer.draw_looping_animations(counter, self.stage_assets.background, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
+        self.renderer.draw_dynamic_entities(counter, self.dynamic_entities, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
+        self.renderer.draw_looping_animations(counter, self.stage_assets.foreground, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
         self.renderer.render();
 
         return false; // Temporary solution until game has win-condition.

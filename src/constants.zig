@@ -12,6 +12,7 @@ pub const MAX_NUM_PLAYERS = 4;
 pub const TIMESTEP_S: float = 1.0 / 60.0;
 pub const TIMESTEP_NS: u64 = 1.667e+7;
 pub const ANIMATION_SLOWDOWN_FACTOR: u64 = 3;
+pub const STAGE_SELECT_ANIMATION_TIMESTEP_NS: u64 = 5 * TIMESTEP_NS;
 
 pub const DEFAULT_RUN_VELOCITY: float = 5.9;
 pub const DEFAULT_RUN_ACCELERATION: float = 129.9;
