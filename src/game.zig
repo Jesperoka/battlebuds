@@ -17,12 +17,14 @@ const stages = @import("stages.zig");
 
 // Private Types
 const float = @import("types.zig").float;
-const EntityMode = @import("assets.zig").EntityMode;
-const ID = @import("assets.zig").ID;
-const ASSETS_PER_ID = @import("assets.zig").ASSETS_PER_ID;
+const EntityMode = @import("visual_assets.zig").EntityMode;
+const VisualAssetID = @import("visual_assets.zig").ID;
+const AudioAssetID = @import("audio_assets.zig").ID;
+const ASSETS_PER_ID = @import("visual_assets.zig").ASSETS_PER_ID;
 
 // Public Types
 pub const Renderer = @import("render.zig").Renderer;
+pub const AudioPlayer = @import("audio.zig").AudioPlayer;
 pub const DynamicEntities = @import("render.zig").DynamicEntities;
 pub const SimulatorState = @import("physics.zig").SimulatorState;
 
@@ -32,6 +34,7 @@ pub const Game = struct {
     player_actions: [constants.MAX_NUM_PLAYERS]InputHandler.PlayerAction = undefined,
     input_handler: *InputHandler,
     renderer: *Renderer,
+    audio_player: *AudioPlayer,
     dynamic_entities: *DynamicEntities,
     sim_state: *SimulatorState,
     stage_assets: stages.StageAssets = undefined,
@@ -41,26 +44,31 @@ pub const Game = struct {
     pub fn init(
         comptime input_handler: *InputHandler,
         comptime renderer: *Renderer,
+        comptime audio_player: *AudioPlayer,
         comptime dynamic_entities: *DynamicEntities,
         comptime sim_state: *SimulatorState,
     ) Game {
         return Game{
             .input_handler = input_handler.init(),
             .renderer = renderer.init(), // Calls SDL_Init().
+            .audio_player = audio_player.init(),
             .dynamic_entities = dynamic_entities,
             .sim_state = sim_state,
             .timer = std.time.Timer.start() catch unreachable,
-            .num_players = input_handler.num_devices, // Relies on ordering of init.
+            .num_players = input_handler.num_devices, // Relies on being init after input_handler.
         };
     }
     pub fn deinit(self: *Game) void {
         self.input_handler.deinit();
+        self.audio_player.deinit();
         self.renderer.deinit(); // Calls SDL_Quit().
     }
 
     pub fn run(self: *Game) void {
         game_outer_loop: while (true) {
             var counter: u64 = 0;
+
+            self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
 
             // Select stage
             var current_stage: stages.StageID = .Meteor;
@@ -75,7 +83,7 @@ pub const Game = struct {
                 const quit_game = handle_sdl_events();
                 if (quit_game) break :game_outer_loop;
 
-                self.renderer.draw_looping_animations(counter, &[_]ID{ID.MENU_WAITING_FORINPUT}, constants.TIMESTEP_NS) catch unreachable;
+                self.renderer.draw_looping_animations(counter, &[_]VisualAssetID{VisualAssetID.MENU_WAITING_FORINPUT}, constants.TIMESTEP_NS) catch unreachable;
                 self.renderer.render();
 
                 if (self.player_actions[0].jump) break :stage_selection_loop;
@@ -153,14 +161,14 @@ pub const Game = struct {
         const FRAME_TO_SHOW_STAGE = 7;
         const stage_assets = stages.stageAssets(selected_stage);
 
-        for (0..ASSETS_PER_ID[ID.MENU_STAGE_SELECTED.int()]) |local_counter| {
+        for (0..ASSETS_PER_ID[VisualAssetID.MENU_STAGE_SELECTED.int()]) |local_counter| {
             self.timer.reset();
 
             if (local_counter >= FRAME_TO_SHOW_STAGE) {
                 self.renderer.draw_looping_animations(global_counter + local_counter, stage_assets.background, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
                 self.renderer.draw_looping_animations(global_counter + local_counter, stage_assets.foreground, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
             }
-            self.renderer.draw_animation_frame(local_counter, ID.MENU_STAGE_SELECTED) catch unreachable;
+            self.renderer.draw_animation_frame(local_counter, VisualAssetID.MENU_STAGE_SELECTED) catch unreachable;
 
             self.renderer.render();
             while (self.timer.read() < frame_interval_ns) {} // Do nothing.

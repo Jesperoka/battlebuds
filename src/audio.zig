@@ -1,53 +1,84 @@
 /// Play sounds for the game.
-const SDL = @import("sdl2.zig");
+const SDL = @import("sdl2");
 const std = @import("std");
 const utils = @import("utils.zig");
+const audio_assets = @import("audio_assets.zig");
+const WavFile = @import("audio_assets.zig").WavFile;
 
-pub const Audio = struct {
-    device_id: SDL.SDL_AudioDeviceID,
-    device_spec: SDL.SDL_AudioSpec,
+// TODO: look into whether wavfile_slices can be const or not.
+pub const AudioPlayer = struct {
+    device_id: SDL.SDL_AudioDeviceID = undefined,
 
-    // NOTE: temporarily only one file
-    wav_file: WavFile,
+    device_spec: SDL.SDL_AudioSpec = SDL.SDL_AudioSpec{
+        .freq = 48000,
+        .format = SDL.AUDIO_S16SYS,
+        .channels = 2,
+        .silence = 0,
+        .samples = 4096,
+        .padding = 0,
+        .size = 0,
+        .callback = null,
+        .userdata = null,
+    },
 
-    pub fn init(self: *Audio) Audio {
-        // TODO: load wave files, similarly to Renderer.
-        // TODO: store in utils.StaticMap, use ID to lookup, similarly to Renderer.
+    var wav_files = utils.StaticMap(audio_assets.ID.size(), audio_assets.ID, []WavFile);
 
+    pub fn init(self: *AudioPlayer) *AudioPlayer {
         SDL.SDL_ClearError();
-        self.device_id = SDL.SDL_OpenAudioDevice(null, 0, null, &self.device_spec, SDL.SDL_AUDIO_ALLOW_ANY_CHANGE);
+        self.device_id = SDL.SDL_OpenAudioDevice(null, 0, &self.device_spec, &self.device_spec, SDL.SDL_AUDIO_ALLOW_ANY_CHANGE);
 
-        if (!std.mem.eql(SDL.SDL_GetError(), "")) {
+        if (!std.mem.eql(u8, std.mem.span(SDL.SDL_GetError()), "")) {
             utils.sdlPanic();
         }
 
-        SDL.SDL_LoadWAV(
-            "testfile.wav",
-            &self.device_spec,
-            self.wav_file.file_start_ptr,
-            self.wav_file.file_length,
-        ) orelse utils.sdlPanic();
+        // Load all audio assets.
+        inline for (std.meta.fields(audio_assets.ID)) |enum_field| {
+            const id: audio_assets.ID = @enumFromInt(enum_field.value);
+            var count: usize = 0;
+
+            // For simplicity, just check all visual assets.
+            for (audio_assets.ALL) |audio_asset| {
+                if (audio_asset.id != id) continue;
+
+                _ = SDL.SDL_LoadWAV(
+                    audio_asset.path,
+                    &self.device_spec,
+                    @as(?*(?*u8), @ptrCast(&audio_assets.wavfile_slices[id.int()][count].start_ptr)),
+                    &audio_assets.wavfile_slices[id.int()][count].length,
+                ) orelse utils.sdlPanic();
+
+                count += 1;
+
+                if (count > audio_assets.wavfile_slices[id.int()].len) break;
+            }
+            wav_files.insert(id, audio_assets.wavfile_slices[id.int()], false) catch unreachable;
+        }
 
         return self;
     }
 
-    pub fn deinit(self: *Audio) void {
-        SDL.SDL_FreeWAV(self.wav_file.file_start_ptr);
+    pub fn deinit(self: *AudioPlayer) void {
+        for (wav_files.things) |wav_file_variations| {
+            for (wav_file_variations) |wav_file| {
+                SDL.SDL_FreeWAV(wav_file.start_ptr);
+            }
+        }
         SDL.SDL_CloseAudioDevice(self.device_id);
     }
 
-    pub fn play(self: *Audio, sound_id: i32) void {
-        _ = sound_id;
-        SDL.SDL_QueueAudio(self.device, self.wav_file.file_start_ptr, self.wav_file.file_length);
+    pub fn play(self: *AudioPlayer, audio_asset_id: audio_assets.ID, sound_variation_index: usize) void {
+        const wav_file = (wav_files.lookup(audio_asset_id, false) catch unreachable)[sound_variation_index];
+        if (SDL.SDL_QueueAudio(
+            self.device_id,
+            wav_file.start_ptr,
+            wav_file.length,
+        ) != 0) {
+            utils.sdlPanic();
+        }
         SDL.SDL_PauseAudioDevice(self.device_id, 0);
     }
 
-    pub fn pause(self: *Audio) void {
+    pub fn pause(self: *AudioPlayer) void {
         SDL.SDL_PauseAudioDevice(self.device_id, 1);
     }
-};
-
-const WavFile = struct {
-    file_start_ptr: ?*u8,
-    file_length: u32,
 };

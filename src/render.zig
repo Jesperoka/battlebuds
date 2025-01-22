@@ -8,10 +8,9 @@ const c = @cImport({
 });
 
 const constants = @import("constants.zig");
-const assets = @import("assets.zig");
+const visual_assets = @import("visual_assets.zig");
 const utils = @import("utils.zig");
 const stages = @import("stages.zig");
-const textureMap = @import("assets.zig").textureMap;
 
 const Vec = @import("types.zig").Vec;
 const VecI32 = @import("types.zig").VecI32;
@@ -67,13 +66,13 @@ pub const DynamicEntities = struct {
 
     X: VecI32 = @splat(0),
     Y: VecI32 = @splat(0),
-    modes: [NUM]assets.EntityMode = .{.{ .dont_load = assets.DontLoadMode.TEXTURE }} ** NUM,
+    modes: [NUM]visual_assets.EntityMode = .{.{ .dont_load = visual_assets.DontLoadMode.TEXTURE }} ** NUM,
 
     pub inline fn init(
         self: *DynamicEntities,
         starting_positions: [constants.MAX_NUM_PLAYERS]stages.Position,
         shuffled_indices: [constants.MAX_NUM_PLAYERS]u8,
-        entity_modes: [constants.MAX_NUM_PLAYERS]assets.EntityMode,
+        entity_modes: [constants.MAX_NUM_PLAYERS]visual_assets.EntityMode,
     ) void {
         for (shuffled_indices, 0..constants.MAX_NUM_PLAYERS) |idx, i| {
             self.X[i] = toPixelX(starting_positions[idx].x);
@@ -149,7 +148,7 @@ pub const Renderer = struct {
             @as([N]i32, dynamic_entities.Y),
             dynamic_entities.modes,
         ) |x, y, mode| {
-            const id = assets.IDFromEntityMode(mode);
+            const id = visual_assets.IDFromEntityMode(mode);
             if (id == .DONT_LOAD_TEXTURE) continue;
 
             const textures = try Textures.map.lookup(id, false);
@@ -173,7 +172,7 @@ pub const Renderer = struct {
     pub fn draw_looping_animations(
         self: *Renderer,
         counter: usize,
-        asset_ids: []const assets.ID,
+        asset_ids: []const visual_assets.ID,
         comptime slowdown_factor: usize,
     ) !void {
         for (asset_ids) |asset_id| {
@@ -187,7 +186,7 @@ pub const Renderer = struct {
     pub fn draw_animation_frame(
         self: *Renderer,
         frame_index: usize,
-        asset_id: assets.ID,
+        asset_id: visual_assets.ID,
     ) !void {
         const textures = try Textures.map.lookup(asset_id, false);
         const texture = textures[frame_index % textures.len];
@@ -208,26 +207,27 @@ fn fillWithColor(renderer: *SDL.SDL_Renderer) void {
     }
 }
 
+// TODO: look into whether texture_slices can be const or not.
 pub const Textures = struct {
     const FORMAT: c_int = SDL.SDL_PIXELFORMAT_ABGR8888;
     const ACCESS_MODE: c_int = SDL.SDL_TEXTUREACCESS_STREAMING;
 
-    var map = utils.StaticMap(assets.ID.size(), assets.ID, []assets.Texture);
+    var map = utils.StaticMap(visual_assets.ID.size(), visual_assets.ID, []visual_assets.Texture);
 
     pub fn init(
         renderer: *SDL.SDL_Renderer,
     ) void {
-        inline for (std.meta.fields(assets.ID)) |enum_field| {
-            const id: assets.ID = @enumFromInt(enum_field.value);
+        inline for (std.meta.fields(visual_assets.ID)) |enum_field| {
+            const id: visual_assets.ID = @enumFromInt(enum_field.value);
             var count: usize = 0;
 
-            // For simplicity, just check all assets.
-            for (assets.ALL) |asset| {
-                if (asset.id != id or asset.id == .DONT_LOAD_TEXTURE) continue;
+            // For simplicity, just check all visual assets.
+            for (visual_assets.ALL) |visual_asset| {
+                if (visual_asset.id != id or visual_asset.id == .DONT_LOAD_TEXTURE) continue;
 
                 loadTexture(
-                    &assets.texture_slices[id.int()][count],
-                    asset.path,
+                    &visual_assets.texture_slices[id.int()][count],
+                    visual_asset.path,
                     renderer,
                     FORMAT,
                     ACCESS_MODE,
@@ -235,9 +235,9 @@ pub const Textures = struct {
 
                 count += 1;
 
-                if (count > assets.texture_slices[id.int()].len) break;
+                if (count > visual_assets.texture_slices[id.int()].len) break;
             }
-            map.insert(id, assets.texture_slices[id.int()], false) catch unreachable;
+            map.insert(id, visual_assets.texture_slices[id.int()], false) catch unreachable;
         }
     }
 
@@ -251,7 +251,7 @@ pub const Textures = struct {
 };
 
 fn loadTexture(
-    texture: *assets.Texture,
+    texture: *visual_assets.Texture,
     path: []const u8,
     renderer: *SDL.SDL_Renderer,
     comptime format: c_int,

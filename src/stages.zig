@@ -5,7 +5,7 @@ const utils = @import("utils.zig");
 const HorizontalDirection = @import("game.zig").HorizontalDirection;
 const fields = @import("std").meta.fields;
 const float = @import("types.zig").float;
-const ID = @import("assets.zig").ID;
+const ID = @import("visual_assets.zig").ID;
 
 // Convex Polygons.
 // Must have vertices ordered in counterclockwise direction.

@@ -94,9 +94,10 @@ ID_FROM_MODE_FOOTER = """\
 if __name__ == "__main__":
     print("\nRUNNING:", __file__, "\n")
     TAB_SIZE = 4
-    asset_dir = "assets"
+    asset_dir = "assets/visual"
+    output_file = "src/visual_assets.zig"
 
-    with open("src/assets.zig", "w") as outfile:
+    with open(output_file, "w") as outfile:
         print(FILE_HEADER, file=outfile)
 
         enum_string = ENUM_HEADER
