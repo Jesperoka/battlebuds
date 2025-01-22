@@ -46,7 +46,7 @@ pub const Game = struct {
     ) Game {
         return Game{
             .input_handler = input_handler.init(),
-            .renderer = renderer.init(),
+            .renderer = renderer.init(), // Calls SDL_Init().
             .dynamic_entities = dynamic_entities,
             .sim_state = sim_state,
             .timer = std.time.Timer.start() catch unreachable,
@@ -55,7 +55,7 @@ pub const Game = struct {
     }
     pub fn deinit(self: *Game) void {
         self.input_handler.deinit();
-        self.renderer.deinit();
+        self.renderer.deinit(); // Calls SDL_Quit().
     }
 
     pub fn run(self: *Game) void {
