@@ -51,7 +51,7 @@ pub const Game = struct {
         return Game{
             .input_handler = input_handler.init(),
             .renderer = renderer.init(), // Calls SDL_Init().
-            .audio_player = audio_player.init(),
+            .audio_player = audio_player, // TODO: uncomment: audio_player.init(),
             .dynamic_entities = dynamic_entities,
             .sim_state = sim_state,
             .timer = std.time.Timer.start() catch unreachable,
@@ -68,7 +68,7 @@ pub const Game = struct {
         game_outer_loop: while (true) {
             var counter: u64 = 0;
 
-            self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
+            // self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
 
             // Select stage
             var current_stage: stages.StageID = .Meteor;

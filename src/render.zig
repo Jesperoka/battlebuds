@@ -177,10 +177,10 @@ pub const Renderer = struct {
     ) !void {
         for (asset_ids) |asset_id| {
             const animation_counter = @divFloor(counter, slowdown_factor);
-            self.draw_animation_frame(animation_counter, asset_id) catch unreachable;
-            // const textures = try Textures.map.lookup(asset_id, false);
-            // const texture = textures[animation_counter % textures.len];
-            // _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
+            // self.draw_animation_frame(animation_counter, asset_id) catch unreachable;
+            const textures = try Textures.map.lookup(asset_id, false);
+            const texture = textures[animation_counter % textures.len];
+            _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
         }
     }
     pub fn draw_animation_frame(

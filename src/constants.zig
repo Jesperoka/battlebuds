@@ -9,8 +9,9 @@ const VecI32 = @import("types.zig").VecI32;
 // -----------------------------------------
 pub const MAX_NUM_PLAYERS = 4;
 
-pub const TIMESTEP_S: float = 1.0 / 60.0;
-pub const TIMESTEP_NS: u64 = 1.667e+7;
+const FRAMERATE: float = 60;
+pub const TIMESTEP_S: float = 1.0 / FRAMERATE ; // 1.0 / 60.0;
+pub const TIMESTEP_NS: u64 = @intFromFloat(( 1.0 / FRAMERATE ) * 1e+9); // 1.667e+7;
 pub const ANIMATION_SLOWDOWN_FACTOR: u64 = 3;
 pub const STAGE_SELECT_ANIMATION_TIMESTEP_NS: u64 = 5 * TIMESTEP_NS;
 
@@ -41,7 +42,7 @@ pub const PIXELS_PER_METER: float = @as(float, @floatFromInt(X_RESOLUTION)) / ST
 // -----------------------------------------
 pub const INFINITY: float = inf(float);
 
-pub const VEC_LENGTH = 32;
+pub const VEC_LENGTH = 16;
 pub const ZERO_VEC: Vec = @splat(0);
 pub const ONE_VEC: Vec = @splat(1);
 pub const TWO_VEC: Vec = @splat(2);

@@ -5,6 +5,8 @@ const utils = @import("utils.zig");
 const audio_assets = @import("audio_assets.zig");
 const WavFile = @import("audio_assets.zig").WavFile;
 
+// TODO: look into storing files zipped, and then decompressing at runtime.
+
 // TODO: look into whether wavfile_slices can be const or not.
 pub const AudioPlayer = struct {
     device_id: SDL.SDL_AudioDeviceID = undefined,
