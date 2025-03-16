@@ -113,7 +113,7 @@ pub const SimulatorState = struct {
 
     fn posVelAccTimeRelation(dt: float, p0: Vec, v0: Vec, a: Vec) Vec {
         const delta_t: Vec = @splat(dt);
-        const delta_t_squared: Vec = @splat(dt * dt); // is this better?
+        const delta_t_squared: Vec = @splat(dt * dt);
         const one_half: Vec = @splat(0.5);
 
         return p0 + v0 * delta_t + one_half * a * delta_t_squared;
@@ -331,22 +331,22 @@ pub const SimulatorState = struct {
 
         const bounce_vel_cutoff: Vec = @splat(10.0);
 
-        const bounce_x: Vec = vecFloatFromBool(@abs(dX) > bounce_vel_cutoff);
-        const bounce_y: Vec = vecFloatFromBool(@abs(dY) > bounce_vel_cutoff);
+        const do_bounce_x: Vec = vecFloatFromBool(@abs(dX) > bounce_vel_cutoff);
+        const do_bounce_y: Vec = vecFloatFromBool(@abs(dY) > bounce_vel_cutoff);
 
         const bounce_dX: Vec = self.X_push;
         const bounce_dY: Vec = self.Y_push;
 
         const glide_vel_cutoff: Vec = @splat(1.0);
 
-        const glide_x: Vec = vecFloatFromBool(@abs(dX) > glide_vel_cutoff);
-        const glide_y: Vec = vecFloatFromBool(@abs(dY) > glide_vel_cutoff);
+        const do_glide_x: Vec = vecFloatFromBool(@abs(dX) > glide_vel_cutoff);
+        const do_glide_y: Vec = vecFloatFromBool(@abs(dY) > glide_vel_cutoff);
 
         const preserved_dX: Vec = @select(float, self.X_push < self.Y_push, dX, constants.ZERO_VEC);
         const preserved_dY: Vec = @select(float, self.Y_push < self.X_push, dY, constants.ZERO_VEC);
 
-        self.physics_state.dX = self.colliding * (bounce_x * elasticity * bounce_dX + glide_x * preserved_dX) + (constants.ONE_VEC - self.colliding) * (dX);
-        self.physics_state.dY = self.colliding * (bounce_y * elasticity * bounce_dY + glide_y * preserved_dY) + (constants.ONE_VEC - self.colliding) * (dY);
+        self.physics_state.dX = self.colliding * (do_bounce_x * elasticity * bounce_dX + do_glide_x * preserved_dX) + (constants.ONE_VEC - self.colliding) * (dX);
+        self.physics_state.dY = self.colliding * (do_bounce_y * elasticity * bounce_dY + do_glide_y * preserved_dY) + (constants.ONE_VEC - self.colliding) * (dY);
 
         self.physics_state.ddX = self.colliding * (-friction_coeff * preserved_dX) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dX * @abs(dX));
         self.physics_state.ddY = self.colliding * (-friction_coeff * preserved_dY) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dY * @abs(dY) + gravity);

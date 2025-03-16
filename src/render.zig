@@ -135,11 +135,15 @@ pub const Renderer = struct {
         SDL.SDL_Quit();
     }
 
+    fn corrected_animation_counter(counter: usize, comptime slowdown_factor: float) usize {
+        return @intFromFloat(@floor(@as(float, @floatFromInt(counter)) / slowdown_factor));
+    }
+
     pub fn draw_dynamic_entities(
         self: *Renderer,
         counter: usize,
         dynamic_entities: *DynamicEntities,
-        comptime slowdown_factor: usize,
+        comptime slowdown_factor: float,
     ) !void {
         const N = DynamicEntities.NUM;
 
@@ -152,7 +156,7 @@ pub const Renderer = struct {
             if (id == .DONT_LOAD_TEXTURE) continue;
 
             const textures = try Textures.map.lookup(id, false);
-            const animation_counter = @divFloor(counter, slowdown_factor);
+            const animation_counter = corrected_animation_counter(counter, slowdown_factor);
             const texture = textures[animation_counter % textures.len];
 
             _ = SDL.SDL_RenderCopy(
@@ -173,14 +177,14 @@ pub const Renderer = struct {
         self: *Renderer,
         counter: usize,
         asset_ids: []const visual_assets.ID,
-        comptime slowdown_factor: usize,
+        comptime slowdown_factor: float,
     ) !void {
         for (asset_ids) |asset_id| {
-            const animation_counter = @divFloor(counter, slowdown_factor);
-            // self.draw_animation_frame(animation_counter, asset_id) catch unreachable;
-            const textures = try Textures.map.lookup(asset_id, false);
-            const texture = textures[animation_counter % textures.len];
-            _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
+            const animation_counter = corrected_animation_counter(counter, slowdown_factor);
+            self.draw_animation_frame(animation_counter, asset_id) catch unreachable;
+            // const textures = try Textures.map.lookup(asset_id, false);
+            // const texture = textures[animation_counter % textures.len];
+            // _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
         }
     }
     pub fn draw_animation_frame(

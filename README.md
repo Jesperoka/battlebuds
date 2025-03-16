@@ -13,7 +13,7 @@ Linux J 5.15.153.1-microsoft-standard-WSL2 #1 SMP Fri Mar 29 23:14:13 UTC 2024 x
 
 # TODO list to get started:
 
-Functionality: 
+Functionality:
 
 - [X] Figure out basics of Zig build system.
 - ~~[ ] Draw anything to a buffer with libdrm.~~
@@ -23,31 +23,42 @@ Functionality:
 - [X] Correctly draw a texture to screen.
 - [X] Read input from controller (hidapi).
 - [X] Create a loop to move some shape based on controller input.
-- [ ] Move multiple (displayed) objects at once.
-- [ ] Create basic collision detection
-- [ ] Add basic Newtonian physics.
-- [ ] Research options for PRNG numbers in Zig/C. 
-- [ ] (*) Implement framerate control.
+- [X] Move multiple (displayed) objects at once.
+- [X] Create basic collision detection.
+- [X] Add basic Newtonian physics.
+- [X] Research options for PRNG numbers in Zig/C.
+- [X] (*) Implement framerate control.
 - [ ] (.) Design player character.
+- [ ] Implement a basic map selection menu.
+- [ ] Extend to menu with a couple of settings.
+- [ ] Add character selection.
 
-Performance: 
+Performance:
 
-- [ ] Investigate Zig vectors with automatic SIMD.
-- [ ] Threading.
-- [ ] (?) Hardware acceleration (excuse to learn CUDA, look into [GEM/libgbm](https://manpages.debian.org/unstable/libdrm-dev/drm-memory.7.en.html)).
+- [X] Investigate Zig vectors with automatic SIMD.
+- ~~[ ] (?) Hardware acceleration (excuse to learn CUDA, look into [GEM/libgbm](https://manpages.debian.org/unstable/libdrm-dev/drm-memory.7.en.html)).~~
+- [X] Use perf to profile the code.
+- [ ] Separate thread for player input handling.
+- [ ] Spacial optimization of collision detection.
 
-Art: 
+Art:
 
-- [ ] Make some static pixel art.
-- [ ] Make pixel art for animation frames.
-- [ ] (*) Add frame count based animations
-- [ ] (.) Animation switch on charater mode.
+- [X] Make some static pixel art.
+- [X] Make pixel art for animation frames.
+- [X] (*) Add frame count based animations
+- [X] (.) Animation switch on charater mode.
 - [ ] (?) Fancy 3D/2.5D background or something, game will still be 2D.
+
+Audio:
+
+- [X] Test out audio in SDL2.
+- [ ] Investigate limits of 8-bit audio format, needed for lower filesizes.
+
 
 
 # NOTES DURING DEVELOPMENT
 ### Libdrm and XCB
-Tried using libdrm at first, but as far as I can tell, it's not possible (without some custom magic compatability layers) inside WSL2 because 
+Tried using libdrm at first, but as far as I can tell, it's not possible (without some custom magic compatability layers) inside WSL2 because
 the Linux kernel does not have permission to control the framebuffers *just like that*. Thus, I've switched to XCB, and after banging my head
 at a wall for a bit, it seems we can get this to work. XCB is at least somewhat low level, and does teach me stuff about C programming and the
 X protocol, but it's not the ideal experience of writing directly to framebuffers. It would have been cool to learn about double buffering, page-flipping
@@ -58,7 +69,7 @@ and other low level graphics driver stuff, so I might make that when I get acces
     <br>Overview of some parts of the Linux graphics stack.<br><br>
 </div>
 
-Basically I'm writing an X11 application, but I will not be using any premade graphics libraries, and only really using 
+Basically I'm writing an X11 application, but I will not be using any premade graphics libraries, and only really using
 XCB for window management and sending requests to draw my pixels (which I will write other code to do).
 The point is the excercise of it all.
 
@@ -72,12 +83,12 @@ xdpyinfo -ext MIT-SHM
 to get information about the Shm XCB extension. Haven't actually tried though.
 
 ### XCB and SDL2
-After struggling with XCB for a while, I am moving on to using SDL2. XCB documentation is a bit lacking in some areas, 
+After struggling with XCB for a while, I am moving on to using SDL2. XCB documentation is a bit lacking in some areas,
 and I was not able to find good enough examples for pixmap drawing, mostly running into issues of formatting the data
 buffer correctly. I ended up trying the XCB extension xcb_image.h, but even with the helper functions it provides the
 pixmap format did not seem to be correct. The specific documentation on drawing pixmaps is missing from the XCB documentation.
 I could only find people drawing bitmaps, or using other image formats. A considerable amount of trouble also came from
-the C Zig interop, which I am still learning. It's not as easy as some would suggest to get the correct types at the 
+the C Zig interop, which I am still learning. It's not as easy as some would suggest to get the correct types at the
 current time, especially when there are opaque types and such. Thus, I am switching to using a Zig binding for SDL2,
 since I am getting a bit bored of difficult C interop without enough documentation for my current knowledge level.
 I the process I did watch this talk: [How to Use Abstraction to Kill Your API - J. Marler](https://www.youtube.com/watch?v=aPWFLkHRIAQ),
@@ -99,7 +110,7 @@ controllers:
     <img src="docs/imgs/Gamepads.webp" width="350">
     <br>Four unknown controllers I found in some electrical waste (still packaging plastic).<br><br>
 </div>
-So I opened one of them to see if I could find some information about who made these:<br><br> 
+So I opened one of them to see if I could find some information about who made these:<br><br>
 
 <div align="center">
     <img src="docs/imgs/InsideGamepad0.webp" height="175">
@@ -146,13 +157,13 @@ with a button press for jumping.
 ### Zig Function Parameters
 As it happens, when passing a value to a function, Zig choose whether to copy or pass a reference
 to the parameter, depending on which is faster. This is possible because Zig function parameters are immutable,
-and one should treat all parameters as being copied values. 
+and one should treat all parameters as being copied values.
 [Pass-by-Value Parameters](https://ziglang.org/documentation/master/#toc-Pass-by-value-Parameters).
 
 Thus, math functions that take large `@Vector`s don't need to worry about expensive copies, so this is fine:
 ```Zig
 fn elementwiseAddition(vec1: @Vector(99999, f64), vec2: @Vector(99999, f64)) @Vector(99999, f64) {
-    return vec1 + vec2;   
+    return vec1 + vec2;
 }
 ```
 
@@ -170,21 +181,46 @@ There are some proposals that will change this:
 To allow for more shapes than just rectangles and circles I've upgraded the collision detection to use
 the separating axis theorem, implemented with @Vectors for parallellism. This should give me faily good performance,
 but the tradeoff is that making spatial optimizations now becomes a bit tricky, since we check everything against
-everything with SIMD operations, and thus also can't have early exit from the detection loop 
+everything with SIMD operations, and thus also can't have early exit from the detection loop
 (could actually sum-reduce the vector to check if everything is not colliding and exit early if so). On the other hand, this mean the performance we
 see is consistent and always worst-case. It should still be possible to implement uniform grid optimizations
 for collision testing, but I doubt it will be necessary.
 
 ### Artwork and Music
 After having working collision detection (that I'm happy with), we can now make our first stage,
-and I've gone for a space theme because it's one of the easier to draw. My friend August also offered 
+and I've gone for a space theme because it's one of the easier to draw. My friend August also offered
 to make some music for the game, so now it really feels like we're getting somewhere.
 
 <div align="center">
-    <img src="assets/SpaceBackground.png" width="550">
+    <img src="assets/Stages.png" width="550">
     <br>Space stage background. Made in ProCreate<br><br>
 </div>
 We'll figure out the artstyle as we go. It's been a while since I did any art, so I'll have to re-learn.
+
+### Performance
+Having noticed some performance drops, I decided to try to learn how to use a profiling tool.
+While there is not dedicated profiling tool for Zig that I know of at this time, I decided to check
+out `perf` the Linux sampling profiler. Aside from being on WSL2 meaning I had to build perf myself (wasn't hard),
+the program is easy to get started with by just looking up what some of the commands are. It turns out
+the code I've written is a very small part of the time spent by the program. This means that, atleast for the time being,
+trying to optimize the input handling or collision detection further, will not fix the performance issues.
+
+Realizing that the functions being called were all part of the rendering software, so SDL2 calling the low-level renderer,
+I thought llvmpipe and gallium sounded familiar, and sure enough, WSL2 Mesa drivers were not using my GPU.
+
+After a bit of GitHub issue reading, discovering that this is (probably) a bug in Mesa, from version 24.3.0, a fix was eventually found.
+[https://github.com/microsoft/WSL/issues/12584](https://github.com/microsoft/WSL/issues/12584) (NOTE: There are many other similar issues)
+```bash
+# Setting the GALLIUM_DRIVER directly to DirectX 12, as a workaround to a bug in Mesa.
+export GALLIUM_DRIVER=d3d12
+
+# And for good measure also setting the default driver to NVIDIA, even though at present time this doesn't actually work.
+export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
+```
+
+With this done, performance is good again, and I can focus on core features rather than mini-optimizations.
+At some point I will probably come back to this, to try to get 60 fps even with software rendering, and
+
 
 # Dependencies:
 - Zig (using 0.14.0)

@@ -9,14 +9,18 @@ const VecI32 = @import("types.zig").VecI32;
 // -----------------------------------------
 pub const MAX_NUM_PLAYERS = 4;
 
-const FRAMERATE: float = 60;
-pub const TIMESTEP_S: float = 1.0 / FRAMERATE ; // 1.0 / 60.0;
-pub const TIMESTEP_NS: u64 = @intFromFloat(( 1.0 / FRAMERATE ) * 1e+9); // 1.667e+7;
-pub const ANIMATION_SLOWDOWN_FACTOR: u64 = 3;
-pub const STAGE_SELECT_ANIMATION_TIMESTEP_NS: u64 = 5 * TIMESTEP_NS;
+const BASE_FRAMERATE: float = 60; // Don't change.
+const FRAMERATE: float = 90;
+pub const FRAMERATE_TO_BASE_FRAMERATE_RATIO: float = FRAMERATE / BASE_FRAMERATE;
+
+pub const TIMESTEP_S: float = 1.0 / FRAMERATE; // 1.0 / 60.0;
+pub const TIMESTEP_NS: u64 = @intFromFloat((1.0 / FRAMERATE) * 1e+9); // 1.667e+7;
+
+pub const ANIMATION_SLOWDOWN_FACTOR: float = 3.0 * FRAMERATE_TO_BASE_FRAMERATE_RATIO;
+pub const STAGE_SELECT_ANIMATION_TIMESTEP_NS: u64 = (5.0 / BASE_FRAMERATE) * 1e+9;
 
 pub const DEFAULT_RUN_VELOCITY: float = 5.9;
-pub const DEFAULT_RUN_ACCELERATION: float = 129.9;
+pub const DEFAULT_RUN_ACCELERATION: float = 0.0; //129.9;
 
 pub const DEFAULT_JUMP_SQUAT_FRAMES: u8 = 5;
 pub const DEFAULT_JUMP_AGAIN_DELAY_FRAMES: u8 = 3;
@@ -42,7 +46,7 @@ pub const PIXELS_PER_METER: float = @as(float, @floatFromInt(X_RESOLUTION)) / ST
 // -----------------------------------------
 pub const INFINITY: float = inf(float);
 
-pub const VEC_LENGTH = 16;
+pub const VEC_LENGTH = 32;
 pub const ZERO_VEC: Vec = @splat(0);
 pub const ONE_VEC: Vec = @splat(1);
 pub const TWO_VEC: Vec = @splat(2);

@@ -51,7 +51,7 @@ pub const Game = struct {
         return Game{
             .input_handler = input_handler.init(),
             .renderer = renderer.init(), // Calls SDL_Init().
-            .audio_player = audio_player, // TODO: uncomment: audio_player.init(),
+            .audio_player = audio_player.init(),
             .dynamic_entities = dynamic_entities,
             .sim_state = sim_state,
             .timer = std.time.Timer.start() catch unreachable,
@@ -61,34 +61,40 @@ pub const Game = struct {
     pub fn deinit(self: *Game) void {
         self.input_handler.deinit();
         self.audio_player.deinit();
-        self.renderer.deinit(); // Calls SDL_Quit().
+        self.renderer.deinit(); // Calls SDL_Quit(), must therefore be called after other structs that use SDL.
     }
 
     pub fn run(self: *Game) void {
         game_outer_loop: while (true) {
             var counter: u64 = 0;
 
-            // self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
+            self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
 
             // Select stage
             var current_stage: stages.StageID = .Meteor;
 
             stage_selection_loop: while (true) {
                 self.timer.reset();
+
+                // TODO: This should be concurrent.
                 defer self.read_player_inputs_while_waiting_for_end_of_frame();
 
-                // TODO: play stage switch animation.
+                // TODO: Play stage switch animation.
                 current_stage = current_stage.switch_stage(self.player_actions[0].x_dir);
 
                 const quit_game = handle_sdl_events();
                 if (quit_game) break :game_outer_loop;
 
-                self.renderer.draw_looping_animations(counter, &[_]VisualAssetID{VisualAssetID.MENU_WAITING_FORINPUT}, constants.TIMESTEP_NS) catch unreachable;
+                self.renderer.draw_looping_animations(
+                    counter,
+                    &[_]VisualAssetID{VisualAssetID.MENU_WAITING_FORINPUT},
+                    constants.STAGE_SELECT_ANIMATION_TIMESTEP_NS,
+                ) catch unreachable;
                 self.renderer.render();
 
                 if (self.player_actions[0].jump) break :stage_selection_loop;
 
-                // TODO: allow button press to de- and re-init self.input_handler.
+                // TODO: Allow button press to de- and re-init self.input_handler.
                 // also allow button press on any of the controllers to add it to
                 // self.num_players. Might be complicated a bit by ordering of reports.
                 // self.input_handler.read_input() uses self.input_handler.devices array
@@ -127,10 +133,14 @@ pub const Game = struct {
             var stop = false;
             while (!stop) {
                 self.timer.reset();
+
+                // TODO: This should be concurrent.
                 defer self.read_player_inputs_while_waiting_for_end_of_frame();
 
                 stop = self.step(counter);
 
+                // TODO: Implement pausing. Pause menu should be in a function.
+                // NOTE: Do not use sdl for pause menu, I consider it cheating.
                 const quit_game = handle_sdl_events();
                 if (quit_game) break :game_outer_loop;
 
@@ -368,7 +378,7 @@ fn base_character_state_transition(
                     .RIGHT => {
                         current_character_state.mode = .FLYING_RIGHT;
                         return .{
-                            EntityMode.init(CharacterType, .FLYING_LEFT),
+                            EntityMode.init(CharacterType, .FLYING_RIGHT),
                             .{
                                 .jump = true,
                                 .vertical_velocity = constants.DEFAULT_JUMP_VELOCITY,

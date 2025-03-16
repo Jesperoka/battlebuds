@@ -186,10 +186,10 @@ pub const meteor = Stage(
     1,
     .{ID.STAGE_METEOR_PLATFORMS},
     .{
-        .{ .x = 0, .y = -1.5 }, // TODO: find good starting positions.
-        .{ .x = 0, .y = -1.5 },
-        .{ .x = 0, .y = 0 },
-        .{ .x = 0, .y = 0 },
+        .{ .x = -5.0, .y = -2.5 }, // TODO: find good starting positions.
+        .{ .x = 5.0, .y = -2.5 },
+        .{ .x = -6.0, .y = 5.0 },
+        .{ .x = 6.0, .y = 5.0 },
     },
     11,
     .{
@@ -369,10 +369,10 @@ pub const test00 = Stage(
     0,
     .{},
     .{
-        .{ .x = 0, .y = -1.5 }, // TODO: find good starting positions.
-        .{ .x = 0, .y = -1.5 },
-        .{ .x = 0, .y = 0 },
-        .{ .x = 0, .y = 0 },
+        .{ .x = -3.0, .y = 2.0 }, // TODO: find good starting positions.
+        .{ .x = 3.0, .y = 2.0 },
+        .{ .x = -5.0, .y = 0.0 },
+        .{ .x = 5.0, .y = 0.0 },
     },
     2,
     .{
