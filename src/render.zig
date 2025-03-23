@@ -93,6 +93,7 @@ pub const Renderer = struct {
     num_textures: u8 = undefined,
 
     pub fn init(comptime self: *Renderer) *Renderer {
+        // TODO: Once controller exiting is done, disable SDL_INIT_EVENTS.
         if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO) < 0) {
             utils.sdlPanic();
         }

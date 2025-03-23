@@ -64,7 +64,18 @@ pub const Game = struct {
         self.renderer.deinit(); // Calls SDL_Quit(), must therefore be called after other structs that use SDL.
     }
 
+    fn input_read_loop(input_handler: *InputHandler, quit_game: *bool) void {
+        while (!quit_game.*) {
+            input_handler.read_input();
+        }
+    }
+
     pub fn run(self: *Game) void {
+        var quit_game = false;
+
+        const input_reading_thread = std.Thread.spawn(.{}, input_read_loop, .{ self.input_handler, &quit_game }) catch unreachable;
+        defer input_reading_thread.join();
+
         game_outer_loop: while (true) {
             var counter: u64 = 0;
 
@@ -75,14 +86,14 @@ pub const Game = struct {
 
             stage_selection_loop: while (true) {
                 self.timer.reset();
+                defer self.wait_for_end_of_frame();
 
-                // TODO: This should be concurrent.
-                defer self.read_player_inputs_while_waiting_for_end_of_frame();
+                self.input_handler.update_player_actions_inplace(&self.player_actions);
 
                 // TODO: Play stage switch animation.
                 current_stage = current_stage.switch_stage(self.player_actions[0].x_dir);
 
-                const quit_game = handle_sdl_events();
+                quit_game = handle_sdl_events();
                 if (quit_game) break :game_outer_loop;
 
                 self.renderer.draw_looping_animations(
@@ -130,18 +141,18 @@ pub const Game = struct {
             }
 
             // Start match
-            var stop = false;
-            while (!stop) {
+            var stop_match = false;
+            while (!stop_match) {
                 self.timer.reset();
+                defer self.wait_for_end_of_frame();
 
-                // TODO: This should be concurrent.
-                defer self.read_player_inputs_while_waiting_for_end_of_frame();
+                self.input_handler.update_player_actions_inplace(&self.player_actions);
 
-                stop = self.step(counter);
+                stop_match = self.step(counter);
 
                 // TODO: Implement pausing. Pause menu should be in a function.
                 // NOTE: Do not use sdl for pause menu, I consider it cheating.
-                const quit_game = handle_sdl_events();
+                quit_game = handle_sdl_events();
                 if (quit_game) break :game_outer_loop;
 
                 counter += 1;
@@ -154,16 +165,9 @@ pub const Game = struct {
         }
     }
 
-    // Always reads player inputs atleast once.
-    fn read_player_inputs_while_waiting_for_end_of_frame(self: *Game) void {
-        var atleast_once = true;
-        while (self.timer.read() < constants.TIMESTEP_NS or atleast_once) {
-            atleast_once = false;
-
-            const reports = self.input_handler.read_input();
-            for (reports, 0..self.num_players) |report, i| {
-                self.player_actions[i] = InputHandler.action(report);
-            }
+    fn wait_for_end_of_frame(self: *Game) void {
+        while (self.timer.read() < constants.TIMESTEP_NS) {
+            // Do nothing.
         }
     }
 
@@ -228,6 +232,7 @@ pub const Game = struct {
         self.stage_assets = stages.stageAssets(stage_id);
     }
 
+    // TODO: Remove this once the game is exitable using controller. Also don't enable SDL2 key events.
     fn handle_sdl_events() bool {
         var event: SDL_Event = undefined;
         while (SDL_PollEvent(&event) != 0) {
@@ -521,6 +526,14 @@ pub const InputHandler = struct {
         select: u1,
         start: u1,
         unknown: u10,
+
+        fn to_action(gamepad_report: UsbGamepadReport) PlayerAction {
+            return PlayerAction{
+                .x_dir = if (gamepad_report.x_axis == 0) .LEFT else if (gamepad_report.x_axis == 255) .RIGHT else .NONE,
+                .jump = @bitCast(gamepad_report.R),
+                .shoot_dir = if (@bitCast(gamepad_report.Y)) .LEFT else if (@bitCast(gamepad_report.A)) .RIGHT else if (@bitCast(gamepad_report.X)) .UP else if (@bitCast(gamepad_report.B)) .DOWN else .NONE,
+            };
+        }
     }; // 64 bits
 
     comptime {
@@ -528,8 +541,8 @@ pub const InputHandler = struct {
     }
 
     report_data: [max_num_devices][report_num_bytes]u8 = undefined,
-    reports: [max_num_devices]*UsbGamepadReport = undefined,
     devices: [max_num_devices]*hidapi.hid_device = undefined,
+    reports: [max_num_devices]*UsbGamepadReport = undefined,
     num_devices: u8 = undefined,
 
     fn init(comptime self: *InputHandler) *InputHandler {
@@ -551,7 +564,10 @@ pub const InputHandler = struct {
         self.num_devices = @intCast(index_past_latest_discovered_device);
 
         for (0..self.num_devices) |i| {
-            utils.assert(hidapi.hid_read(self.devices[i], &self.report_data[i], report_num_bytes) != -1, "Could not hid_read() device during initialization()");
+            utils.assert(
+                hidapi.hid_read(self.devices[i], &self.report_data[i], report_num_bytes) != -1,
+                "Could not hid_read() device during initialization()",
+            );
 
             self.reports[i] = @ptrCast(@alignCast(&self.report_data[i]));
         }
@@ -559,13 +575,18 @@ pub const InputHandler = struct {
         return self;
     }
 
+    // TODO:    reinit() function that can try to hid_read() new devices.
+    //          If number of devices decreases, close the devices that are no longer in use, and just set the new num_devices.
+    //          If number of devices increases, I need to check if hid_enumerate() returns the same devices in the same order.
+
     fn deinit(self: *InputHandler) void {
         for (0..self.num_devices) |idx| {
             hidapi.hid_close(self.devices[idx]);
         }
     }
 
-    fn read_input(self: *InputHandler) []*UsbGamepadReport {
+    fn read_input(self: *InputHandler) void {
+        // Don't need mutex, because we care more about performance than correctness.
         for (0..self.num_devices) |i| {
             utils.assert(hidapi.hid_read_timeout(
                 self.devices[i],
@@ -574,14 +595,14 @@ pub const InputHandler = struct {
                 report_read_time_ms,
             ) != -1, "hid_read() failed.");
         }
-        return self.reports[0..self.num_devices];
     }
 
-    fn action(gamepad_report: *UsbGamepadReport) PlayerAction {
-        return PlayerAction{
-            .x_dir = if (gamepad_report.x_axis == 0) .LEFT else if (gamepad_report.x_axis == 255) .RIGHT else .NONE,
-            .jump = @bitCast(gamepad_report.R),
-            .shoot_dir = if (@bitCast(gamepad_report.Y)) .LEFT else if (@bitCast(gamepad_report.A)) .RIGHT else if (@bitCast(gamepad_report.X)) .UP else if (@bitCast(gamepad_report.B)) .DOWN else .NONE,
-        };
+    fn update_player_actions_inplace(
+        self: *InputHandler,
+        player_actions: []PlayerAction,
+    ) void {
+        for (0..self.num_devices) |i| {
+            player_actions[i] = self.reports[i].to_action();
+        }
     }
 };
