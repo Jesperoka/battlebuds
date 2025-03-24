@@ -38,7 +38,7 @@ Performance:
 - [X] Investigate Zig vectors with automatic SIMD.
 - ~~[ ] (?) Hardware acceleration (excuse to learn CUDA, look into [GEM/libgbm](https://manpages.debian.org/unstable/libdrm-dev/drm-memory.7.en.html)).~~
 - [X] Use perf to profile the code.
-- [ ] Separate thread for player input handling.
+- [X] Separate thread for player input handling.
 - [ ] Spacial optimization of collision detection.
 
 Art:
@@ -198,6 +198,8 @@ to make some music for the game, so now it really feels like we're getting somew
 We'll figure out the artstyle as we go. It's been a while since I did any art, so I'll have to re-learn.
 
 ### Performance
+**GPU not being used:**
+
 Having noticed some performance drops, I decided to try to learn how to use a profiling tool.
 While there is not dedicated profiling tool for Zig that I know of at this time, I decided to check
 out `perf` the Linux sampling profiler. Aside from being on WSL2 meaning I had to build perf myself (wasn't hard),
@@ -220,6 +222,14 @@ export MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA
 
 With this done, performance is good again, and I can focus on core features rather than mini-optimizations.
 At some point I will probably come back to this, to try to get 60 fps even with software rendering, and
+
+**Input handling:**
+Having previously just used the last part of each frame for input polling,
+I now dedicate a thread to input reading. At first, with mutex locking for
+read and writes to the user input, performance was abysmal.
+However, simply dropping the mutex and embracing the data race works perfectly.
+Tested on `ReleaseSmall`, `ReleaseFast`, `ReleaseSafe` and `Debug`.
+
 
 
 # Dependencies:

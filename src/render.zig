@@ -67,6 +67,7 @@ pub const DynamicEntities = struct {
     X: VecI32 = @splat(0),
     Y: VecI32 = @splat(0),
     modes: [NUM]visual_assets.EntityMode = .{.{ .dont_load = visual_assets.DontLoadMode.TEXTURE }} ** NUM,
+    counter_corrections: [NUM]u64 = .{0} ** NUM,
 
     pub inline fn init(
         self: *DynamicEntities,
@@ -86,6 +87,10 @@ pub const DynamicEntities = struct {
         self.Y = vecToPixelY(Y);
     }
 };
+
+pub fn corrected_animation_counter(counter: usize, comptime slowdown_factor: float) usize {
+    return @intFromFloat(@floor(@as(float, @floatFromInt(counter)) / slowdown_factor));
+}
 
 pub const Renderer = struct {
     renderer: *SDL.SDL_Renderer = undefined,
@@ -136,9 +141,6 @@ pub const Renderer = struct {
         SDL.SDL_Quit();
     }
 
-    fn corrected_animation_counter(counter: usize, comptime slowdown_factor: float) usize {
-        return @intFromFloat(@floor(@as(float, @floatFromInt(counter)) / slowdown_factor));
-    }
 
     pub fn draw_dynamic_entities(
         self: *Renderer,
@@ -152,12 +154,13 @@ pub const Renderer = struct {
             @as([N]i32, dynamic_entities.X),
             @as([N]i32, dynamic_entities.Y),
             dynamic_entities.modes,
-        ) |x, y, mode| {
+            dynamic_entities.counter_corrections,
+        ) |x, y, mode, counter_correction| {
             const id = visual_assets.IDFromEntityMode(mode);
             if (id == .DONT_LOAD_TEXTURE) continue;
 
             const textures = try Textures.map.lookup(id, false);
-            const animation_counter = corrected_animation_counter(counter, slowdown_factor);
+            const animation_counter = corrected_animation_counter(counter, slowdown_factor) - counter_correction;
             const texture = textures[animation_counter % textures.len];
 
             _ = SDL.SDL_RenderCopy(

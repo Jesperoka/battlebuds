@@ -19,8 +19,13 @@ const stages = @import("stages.zig");
 const float = @import("types.zig").float;
 const EntityMode = @import("visual_assets.zig").EntityMode;
 const VisualAssetID = @import("visual_assets.zig").ID;
-const AudioAssetID = @import("audio_assets.zig").ID;
+const DontLoadMode = @import("visual_assets.zig").DontLoadMode;
 const ASSETS_PER_ID = @import("visual_assets.zig").ASSETS_PER_ID;
+const AudioAssetID = @import("audio_assets.zig").ID;
+
+// Functions
+const IDFromEntityMode = @import("visual_assets.zig").IDFromEntityMode;
+const corrected_animation_counter = @import("render.zig").corrected_animation_counter;
 
 // Public Types
 pub const Renderer = @import("render.zig").Renderer;
@@ -79,7 +84,7 @@ pub const Game = struct {
         game_outer_loop: while (true) {
             var counter: u64 = 0;
 
-            self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
+            // self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
 
             // Select stage
             var current_stage: stages.StageID = .Meteor;
@@ -113,7 +118,11 @@ pub const Game = struct {
                 // determined by port position in hardware.
             }
 
-            self.play_stage_selected_animation(current_stage, counter, constants.STAGE_SELECT_ANIMATION_TIMESTEP_NS);
+            counter += self.play_stage_selected_animation(
+                current_stage,
+                counter,
+                constants.STAGE_SELECT_ANIMATION_TIMESTEP_NS,
+            );
 
             // Select Characters
             // TODO: implement + num_player detection.
@@ -141,14 +150,13 @@ pub const Game = struct {
             }
 
             // Start match
-            var stop_match = false;
-            while (!stop_match) {
+            match_loop: while (true) {
                 self.timer.reset();
                 defer self.wait_for_end_of_frame();
 
                 self.input_handler.update_player_actions_inplace(&self.player_actions);
 
-                stop_match = self.step(counter);
+                if (self.step(counter)) break :match_loop;
 
                 // TODO: Implement pausing. Pause menu should be in a function.
                 // NOTE: Do not use sdl for pause menu, I consider it cheating.
@@ -171,11 +179,12 @@ pub const Game = struct {
         }
     }
 
-    fn play_stage_selected_animation(self: *Game, selected_stage: stages.StageID, global_counter: u64, frame_interval_ns: u64) void {
+    fn play_stage_selected_animation(self: *Game, selected_stage: stages.StageID, global_counter: u64, frame_interval_ns: u64) u64 {
         const FRAME_TO_SHOW_STAGE = 7;
         const stage_assets = stages.stageAssets(selected_stage);
+        const num_animation_frames = ASSETS_PER_ID[VisualAssetID.MENU_STAGE_SELECTED.int()];
 
-        for (0..ASSETS_PER_ID[VisualAssetID.MENU_STAGE_SELECTED.int()]) |local_counter| {
+        for (0..num_animation_frames) |local_counter| {
             self.timer.reset();
 
             if (local_counter >= FRAME_TO_SHOW_STAGE) {
@@ -183,22 +192,32 @@ pub const Game = struct {
                 self.renderer.draw_looping_animations(global_counter + local_counter, stage_assets.foreground, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
             }
             self.renderer.draw_animation_frame(local_counter, VisualAssetID.MENU_STAGE_SELECTED) catch unreachable;
-
             self.renderer.render();
-            while (self.timer.read() < frame_interval_ns) {} // Do nothing.
+
+            while (self.timer.read() < frame_interval_ns) {
+                // Do nothing.
+            }
         }
+
+        return num_animation_frames;
     }
 
     fn step(self: *Game, counter: u64) bool {
         for (0..self.num_players) |player| {
-            const entity_mode, const movement = handle_character_action(
+            const entity_mode, const movement, const counter_correction = handle_character_action(
                 &self.player_characters[player],
                 self.dynamic_entities.modes[player],
                 self.sim_state.floor_collision[player],
                 self.player_actions[player],
+                counter,
             );
 
+            if (counter_correction.update) {
+                self.dynamic_entities.counter_corrections[player] = counter_correction.frames;
+            }
+
             self.dynamic_entities.modes[player] = entity_mode;
+
             self.sim_state.physics_state.dY[player] = if (movement.jump) movement.vertical_velocity else self.sim_state.physics_state.dY[player];
             self.sim_state.physics_state.dX[player] = movement.horizontal_velocity;
             self.sim_state.physics_state.ddX[player] += movement.horizontal_acceleration;
@@ -253,14 +272,12 @@ pub const Game = struct {
         current_entity_mode: EntityMode,
         floor_collision: bool,
         action: InputHandler.PlayerAction,
-    ) struct { EntityMode, CharacterMovement } {
+        global_counter: u64,
+    ) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
         current_character_state.resources.has_jump = floor_collision or current_character_state.resources.has_jump;
 
         switch (current_entity_mode) {
-            .dont_load => { // TODO: proper init so this can be handled to return DontLoadMode.
-                current_character_state.mode = .RUNNING_RIGHT;
-                return .{ .{ .character_wurmple = .RUNNING_RIGHT }, .{} };
-            },
+            inline .dont_load => return .{ current_entity_mode, .{}, .{} },
             inline .character_wurmple,
             .character_guy,
             .character_test,
@@ -270,6 +287,7 @@ pub const Game = struct {
                     current_character_state,
                     floor_collision,
                     action,
+                    global_counter,
                 );
             },
             else => |character| {
@@ -290,35 +308,54 @@ fn base_character_state_transition(
     current_character_state: *CharacterState,
     floor_collision: bool,
     action: InputHandler.PlayerAction,
-) struct { EntityMode, CharacterMovement } {
+    global_counter: u64,
+) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
     switch (current_character_state.mode) {
-        .NONE => {
-            // BUG: TODO - PROPER INIT!
-            // current_entity_mode.* = .{ .dont_load = .TEXTURE }; // TODO: init entity modes properly, so this can be uncommented and the stuff below deleted
-            if (action.jump) {
-                current_character_state.mode = .RUNNING_RIGHT;
-                return .{ .{ .character_wurmple = .RUNNING_RIGHT }, .{} };
-            } else {
-                current_character_state.mode = .RUNNING_RIGHT;
-                return .{ .{ .dont_load = .TEXTURE }, .{} };
-            }
+        inline .NONE => {
+            current_character_state.mode = .STANDING;
+            return .{ EntityMode.init(CharacterType, .STANDING), .{}, .{} };
         },
-        .STANDING,
+        inline .STANDING,
         .RUNNING_LEFT,
         .RUNNING_RIGHT,
         => {
 
             // TODO: if enough frames in a row don't have floor_collision, transition to FLYING_XXXX depending on movement.
 
-            if (action.jump) {
-                current_character_state.mode = .JUMPING;
-                current_character_state.action_dependent_frame_counter = constants.DEFAULT_JUMP_SQUAT_FRAMES;
-                return .{ EntityMode.init(CharacterType, .JUMPING), .{} };
+            // TODO: Implement the other directions as well.
+            if (action.shoot_dir == .RIGHT) {
+                // TODO: Cleanup.
+                const enum_literal = .SHOOTING_RIGHT;
+                const entity_mode = EntityMode.init(CharacterType, enum_literal);
+                const num_animation_frames: u8 = @intCast(ASSETS_PER_ID[IDFromEntityMode(entity_mode).int()]); // TODO: Temporary.
+                const frame_correction: u7 = @intCast(corrected_animation_counter(global_counter, constants.ANIMATION_SLOWDOWN_FACTOR) % num_animation_frames);
+
+                current_character_state.mode = enum_literal;
+                current_character_state.action_dependent_frame_counter = @intFromFloat(@as(float, @floatFromInt(num_animation_frames)) * constants.ANIMATION_SLOWDOWN_FACTOR);
+
+                return .{
+                    entity_mode,
+                    .{},
+                    .{ .frames = frame_correction, .update = true },
+                };
             }
+
+            if (action.jump) {
+                // TODO: Cleanup.
+                const frame_correction: u7 = @intCast(corrected_animation_counter(global_counter, constants.ANIMATION_SLOWDOWN_FACTOR) % constants.DEFAULT_JUMP_SQUAT_FRAMES);
+                current_character_state.mode = .JUMPING;
+                current_character_state.action_dependent_frame_counter = @intFromFloat(@as(float, @floatFromInt(constants.DEFAULT_JUMP_SQUAT_FRAMES)) * constants.ANIMATION_SLOWDOWN_FACTOR);
+                return .{
+                    EntityMode.init(CharacterType, .JUMPING),
+                    .{},
+                    .{ .frames = frame_correction, .update = true },
+                };
+            }
+
             switch (action.x_dir) {
                 .NONE => {
                     current_character_state.mode = .STANDING;
-                    return .{ EntityMode.init(CharacterType, .STANDING), .{} };
+                    return .{ EntityMode.init(CharacterType, .STANDING), .{}, .{} };
                 },
                 .LEFT => {
                     current_character_state.mode = .RUNNING_LEFT;
@@ -330,6 +367,7 @@ fn base_character_state_transition(
                             .horizontal_velocity = -constants.DEFAULT_RUN_VELOCITY,
                             .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION,
                         },
+                        .{},
                     };
                 },
                 .RIGHT => {
@@ -342,17 +380,15 @@ fn base_character_state_transition(
                             .horizontal_velocity = constants.DEFAULT_RUN_VELOCITY,
                             .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION,
                         },
+                        .{},
                     };
                 },
             }
         },
-        .JUMPING => {
+        inline .JUMPING => {
             if (current_character_state.action_dependent_frame_counter > 0) {
                 current_character_state.action_dependent_frame_counter -= 1;
-                return .{
-                    EntityMode.init(CharacterType, .JUMPING),
-                    .{},
-                };
+                return .{ EntityMode.init(CharacterType, .JUMPING), .{}, .{} };
             } else {
                 current_character_state.action_dependent_frame_counter = constants.DEFAULT_JUMP_AGAIN_DELAY_FRAMES;
                 switch (action.x_dir) {
@@ -366,6 +402,7 @@ fn base_character_state_transition(
                                 .horizontal_velocity = 0,
                                 .horizontal_acceleration = 0,
                             },
+                            .{ .frames = 0, .update = true },
                         };
                     },
                     .LEFT => {
@@ -378,6 +415,7 @@ fn base_character_state_transition(
                                 .horizontal_velocity = -constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
                                 .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                             },
+                            .{},
                         };
                     },
                     .RIGHT => {
@@ -390,9 +428,23 @@ fn base_character_state_transition(
                                 .horizontal_velocity = constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
                                 .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                             },
+                            .{},
                         };
                     },
                 }
+            }
+        },
+        inline .SHOOTING_RIGHT => {
+            if (current_character_state.action_dependent_frame_counter > 0) {
+                current_character_state.action_dependent_frame_counter -= 1;
+                return .{ EntityMode.init(CharacterType, .SHOOTING_RIGHT), .{}, .{} };
+            } else {
+                current_character_state.mode = .STANDING;
+                return .{
+                    EntityMode.init(CharacterType, .STANDING),
+                    .{},
+                    .{ .frames = 0, .update = true },
+                };
             }
         },
         inline .FLYING_NEUTRAL,
@@ -421,6 +473,7 @@ fn base_character_state_transition(
                             .horizontal_velocity = 0,
                             .horizontal_acceleration = 0,
                         },
+                        .{},
                     };
                 },
                 .LEFT => {
@@ -433,6 +486,7 @@ fn base_character_state_transition(
                             .horizontal_velocity = -constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
                             .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                         },
+                        .{},
                     };
                 },
                 .RIGHT => {
@@ -445,6 +499,7 @@ fn base_character_state_transition(
                             .horizontal_velocity = constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
                             .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                         },
+                        .{},
                     };
                 },
             }
@@ -463,6 +518,7 @@ const CharacterMode = enum(u8) {
     FLYING_NEUTRAL,
     FLYING_LEFT,
     FLYING_RIGHT,
+    SHOOTING_RIGHT,
 };
 
 const CharacterResources = packed struct {
@@ -482,6 +538,11 @@ const CharacterMovement = struct {
     vertical_velocity: float = 0,
     horizontal_velocity: float = 0,
     horizontal_acceleration: float = 0,
+};
+
+const AnimationCounterCorrection = packed struct {
+    frames: u7 = 0,
+    update: bool = false,
 };
 
 pub const HorizontalDirection = enum(i2) {
