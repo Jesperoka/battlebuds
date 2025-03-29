@@ -76,8 +76,8 @@ pub const CharacterState = packed struct {
 
 pub const CharacterMovement = struct {
     jump: bool = false,
-    vertical_velocity: float = 0,
     horizontal_velocity: float = 0,
+    vertical_velocity: float = 0,
     horizontal_acceleration: float = 0,
 };
 
@@ -90,9 +90,12 @@ pub const AnimationCounterCorrection = packed struct {
 fn character_shooting_state_transition(
     CharacterType: type,
     current_character_state: *CharacterState,
+    horizontal_velocity: float,
+    vertical_velocity: float,
     global_counter: u64,
     comptime ATTACKING_DIRECTION_ENUM_LITERAL: @TypeOf(.enum_literal),
 ) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
+    const horizontal_velocity_attack_modifier: float = 1.0; // TODO: switch on CharacterType.
     const num_animation_frames: u8 = @intCast(ASSETS_PER_ID[IDFromEntityMode(EntityMode.from_enum_literal(CharacterType, ATTACKING_DIRECTION_ENUM_LITERAL)).int()]);
     const frame_correction: u7 = @intCast(corrected_animation_counter(global_counter, constants.ANIMATION_SLOWDOWN_FACTOR) % num_animation_frames);
 
@@ -101,7 +104,12 @@ fn character_shooting_state_transition(
 
     return .{
         EntityMode.from_enum_literal(CharacterType, ATTACKING_DIRECTION_ENUM_LITERAL),
-        .{}, // TODO: Maybe maintain momentum.
+        .{
+            .jump = false,
+            .horizontal_velocity = horizontal_velocity_attack_modifier * horizontal_velocity,
+            .vertical_velocity = vertical_velocity,
+            .horizontal_acceleration = 0,
+        },
         .{ .frames = frame_correction, .update = true },
     };
 }
@@ -109,6 +117,8 @@ fn character_shooting_state_transition(
 fn character_jumping_state_transition(
     CharacterType: type,
     current_character_state: *CharacterState,
+    horizontal_velocity: float,
+    vertical_velocity: float,
     global_counter: u64,
 ) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
 
@@ -120,7 +130,12 @@ fn character_jumping_state_transition(
 
     return .{
         EntityMode.from_enum_literal(CharacterType, .JUMPING),
-        .{},
+        .{
+            .jump = false,
+            .horizontal_velocity = horizontal_velocity,
+            .vertical_velocity = vertical_velocity,
+            .horizontal_acceleration = 0,
+        },
         .{ .frames = frame_correction, .update = true },
     };
 }
@@ -133,6 +148,8 @@ pub fn base_character_state_transition(
     CharacterType: type,
     current_character_state: *CharacterState,
     floor_collision: bool,
+    horizontal_velocity: float,
+    vertical_velocity: float,
     action: PlayerAction,
     global_counter: u64,
 ) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
@@ -140,7 +157,16 @@ pub fn base_character_state_transition(
         inline .NONE => {
             // TODO: Can do a spawn animation first here (.SPAWNING state transition).
             current_character_state.mode = .STANDING;
-            return .{ EntityMode.from_enum_literal(CharacterType, .STANDING), .{}, .{} };
+            return .{
+                EntityMode.from_enum_literal(CharacterType, .STANDING),
+                .{
+                    .jump = false,
+                    .horizontal_velocity = horizontal_velocity,
+                    .vertical_velocity = vertical_velocity,
+                    .horizontal_acceleration = 0,
+                },
+                .{},
+            };
         },
         inline .STANDING,
         .RUNNING_LEFT,
@@ -150,13 +176,21 @@ pub fn base_character_state_transition(
             // TODO: if enough frames in a row don't have floor_collision, transition to FLYING_XXXX depending on movement.
 
             if (action.jump) {
-                return character_jumping_state_transition(CharacterType, current_character_state, global_counter);
+                return character_jumping_state_transition(
+                    CharacterType,
+                    current_character_state,
+                    horizontal_velocity,
+                    vertical_velocity,
+                    global_counter,
+                );
             }
 
             switch (action.attack_dir) {
-                inline .UP, .DOWN, .LEFT, .RIGHT  => |ATTACK_DIRECTION| return character_shooting_state_transition(
+                inline .UP, .DOWN, .LEFT, .RIGHT => |ATTACK_DIRECTION| return character_shooting_state_transition(
                     CharacterType,
                     current_character_state,
+                    horizontal_velocity,
+                    vertical_velocity,
                     global_counter,
                     CharacterMode.enum_literal_from_attack_direction(ATTACK_DIRECTION),
                 ),
@@ -166,7 +200,11 @@ pub fn base_character_state_transition(
             switch (action.x_dir) {
                 inline .NONE => {
                     current_character_state.mode = .STANDING;
-                    return .{ EntityMode.from_enum_literal(CharacterType, .STANDING), .{}, .{} };
+                    return .{
+                        EntityMode.from_enum_literal(CharacterType, .STANDING),
+                        .{ .jump = false, .horizontal_velocity = horizontal_velocity, .vertical_velocity = vertical_velocity, .horizontal_acceleration = 0 },
+                        .{},
+                    };
                 },
                 inline .LEFT => {
                     current_character_state.mode = .RUNNING_LEFT;
@@ -174,8 +212,8 @@ pub fn base_character_state_transition(
                         EntityMode.from_enum_literal(CharacterType, .RUNNING_LEFT),
                         .{
                             .jump = false,
-                            .vertical_velocity = 0,
-                            .horizontal_velocity = -constants.DEFAULT_RUN_VELOCITY,
+                            .horizontal_velocity = -@max(@abs(horizontal_velocity), constants.DEFAULT_RUN_VELOCITY),
+                            .vertical_velocity = vertical_velocity,
                             .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION,
                         },
                         .{},
@@ -187,8 +225,8 @@ pub fn base_character_state_transition(
                         EntityMode.from_enum_literal(CharacterType, .RUNNING_RIGHT),
                         .{
                             .jump = false,
-                            .vertical_velocity = 0,
-                            .horizontal_velocity = constants.DEFAULT_RUN_VELOCITY,
+                            .horizontal_velocity = @max(@abs(horizontal_velocity), constants.DEFAULT_RUN_VELOCITY),
+                            .vertical_velocity = vertical_velocity,
                             .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION,
                         },
                         .{},
@@ -199,7 +237,16 @@ pub fn base_character_state_transition(
         inline .JUMPING => {
             if (current_character_state.action_dependent_frame_counter > 0) {
                 current_character_state.action_dependent_frame_counter -= 1;
-                return .{ EntityMode.from_enum_literal(CharacterType, .JUMPING), .{}, .{} };
+                return .{
+                    EntityMode.from_enum_literal(CharacterType, .JUMPING),
+                    .{
+                        .jump = false,
+                        .horizontal_velocity = horizontal_velocity,
+                        .vertical_velocity = vertical_velocity,
+                        .horizontal_acceleration = 0,
+                    },
+                    .{},
+                };
             } else {
                 current_character_state.action_dependent_frame_counter = constants.DEFAULT_JUMP_AGAIN_DELAY_FRAMES;
                 switch (action.x_dir) {
@@ -209,8 +256,8 @@ pub fn base_character_state_transition(
                             EntityMode.from_enum_literal(CharacterType, .FLYING_NEUTRAL),
                             .{
                                 .jump = true,
+                                .horizontal_velocity = horizontal_velocity,
                                 .vertical_velocity = constants.DEFAULT_JUMP_VELOCITY,
-                                .horizontal_velocity = 0,
                                 .horizontal_acceleration = 0,
                             },
                             .{ .frames = 0, .update = true },
@@ -222,8 +269,8 @@ pub fn base_character_state_transition(
                             EntityMode.from_enum_literal(CharacterType, .FLYING_LEFT),
                             .{
                                 .jump = true,
+                                .horizontal_velocity = -@max(@abs(horizontal_velocity), constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY),
                                 .vertical_velocity = constants.DEFAULT_JUMP_VELOCITY,
-                                .horizontal_velocity = -constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
                                 .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                             },
                             .{},
@@ -235,8 +282,8 @@ pub fn base_character_state_transition(
                             EntityMode.from_enum_literal(CharacterType, .FLYING_RIGHT),
                             .{
                                 .jump = true,
+                                .horizontal_velocity = @max(@abs(horizontal_velocity), constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY),
                                 .vertical_velocity = constants.DEFAULT_JUMP_VELOCITY,
-                                .horizontal_velocity = constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
                                 .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                             },
                             .{},
@@ -252,13 +299,27 @@ pub fn base_character_state_transition(
         => |ATTACKING_DIRECTION| {
             if (current_character_state.action_dependent_frame_counter > 0) {
                 current_character_state.action_dependent_frame_counter -= 1;
-                // TODO: Knockback/Recoil
-                return .{ EntityMode.from_enum_literal(CharacterType, ATTACKING_DIRECTION.enum_literal()), .{}, .{} };
+                return .{
+                    EntityMode.from_enum_literal(CharacterType, ATTACKING_DIRECTION.enum_literal()),
+                    .{
+                        .jump = false,
+                        .horizontal_velocity = horizontal_velocity,
+                        .vertical_velocity = vertical_velocity,
+                        .horizontal_acceleration = 0,
+                    },
+                    .{},
+                };
             } else {
+                // TODO: Knockback/Recoil
                 current_character_state.mode = .STANDING;
                 return .{
                     EntityMode.from_enum_literal(CharacterType, .STANDING),
-                    .{},
+                    .{
+                        .jump = false,
+                        .horizontal_velocity = horizontal_velocity,
+                        .vertical_velocity = vertical_velocity,
+                        .horizontal_acceleration = 0,
+                    },
                     .{ .frames = 0, .update = true },
                 };
             }
@@ -267,13 +328,13 @@ pub fn base_character_state_transition(
         .FLYING_LEFT,
         .FLYING_RIGHT,
         => {
-            var vertical_velocity: float = 0;
+            var new_vertical_velocity: float = vertical_velocity;
             var jump: bool = false;
 
             if (action.jump and current_character_state.resources.has_jump and (current_character_state.action_dependent_frame_counter <= 0)) {
                 jump = true; // TODO: trigger double jump effect animation
                 current_character_state.resources.has_jump = false;
-                vertical_velocity = constants.DEFAULT_DOUBLE_JUMP_VELOCITY;
+                new_vertical_velocity = @max(@abs(vertical_velocity), constants.DEFAULT_DOUBLE_JUMP_VELOCITY);
             } else {
                 current_character_state.action_dependent_frame_counter -|= 1;
             }
@@ -285,8 +346,8 @@ pub fn base_character_state_transition(
                         EntityMode.from_enum_literal(CharacterType, .FLYING_NEUTRAL),
                         .{
                             .jump = jump,
-                            .vertical_velocity = vertical_velocity,
-                            .horizontal_velocity = 0,
+                            .horizontal_velocity = horizontal_velocity,
+                            .vertical_velocity = new_vertical_velocity,
                             .horizontal_acceleration = 0,
                         },
                         .{},
@@ -298,8 +359,8 @@ pub fn base_character_state_transition(
                         EntityMode.from_enum_literal(CharacterType, .FLYING_LEFT),
                         .{
                             .jump = jump,
-                            .vertical_velocity = vertical_velocity,
-                            .horizontal_velocity = -constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
+                            .horizontal_velocity = -@max(@abs(horizontal_velocity), constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY),
+                            .vertical_velocity = new_vertical_velocity,
                             .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                         },
                         .{},
@@ -311,8 +372,8 @@ pub fn base_character_state_transition(
                         EntityMode.from_enum_literal(CharacterType, .FLYING_RIGHT),
                         .{
                             .jump = jump,
-                            .vertical_velocity = vertical_velocity,
-                            .horizontal_velocity = constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY,
+                            .horizontal_velocity = @max(@abs(horizontal_velocity), constants.DEFAULT_HORIZONTAL_JUMP_VELOCITY),
+                            .vertical_velocity = new_vertical_velocity,
                             .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                         },
                         .{},

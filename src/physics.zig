@@ -192,8 +192,8 @@ pub const SimulatorState = struct {
         X_verts_1: []const Vec,
         Y_verts_1: []const Vec,
     ) struct { VecBool, Vec, Vec } {
-        var X_push: Vec = @splat(99999); // If we use inf, we get NaNs unless we filter.
-        var Y_push: Vec = @splat(99999); // If we use inf, we get NaNs unless we filter.
+        var X_push: Vec = @splat(999999999); // If we use inf, we get NaNs unless we filter.
+        var Y_push: Vec = @splat(999999999); // If we use inf, we get NaNs unless we filter.
         var separated = constants.FALSE_VEC;
 
         for (X_orths, Y_orths) |X_orth, Y_orth| {
@@ -322,34 +322,44 @@ pub const SimulatorState = struct {
 
     pub fn gamePhysics(self: *SimulatorState) void {
         const gravity: Vec = @splat(-50.81);
-        const friction_coeff: Vec = @splat(10.0);
+        const friction_coeff: Vec = @splat(0.8);
         const drag_coeff: Vec = @splat(0.2);
         const elasticity: Vec = @splat(0.3);
 
         const dX = self.physics_state.dX;
         const dY = self.physics_state.dY;
 
-        const bounce_vel_cutoff: Vec = @splat(10.0);
+        const bounce_vel_cutoff: Vec = @splat(7.0);
 
         const do_bounce_x: Vec = vecFloatFromBool(@abs(dX) > bounce_vel_cutoff);
         const do_bounce_y: Vec = vecFloatFromBool(@abs(dY) > bounce_vel_cutoff);
 
-        const bounce_dX: Vec = self.X_push;
-        const bounce_dY: Vec = self.Y_push;
+        const bounce_dX: Vec = -dX;
+        const bounce_dY: Vec = -dY;
 
-        const glide_vel_cutoff: Vec = @splat(1.0);
+        const glide_vel_cutoff: Vec = @splat(5.0);
 
         const do_glide_x: Vec = vecFloatFromBool(@abs(dX) > glide_vel_cutoff);
         const do_glide_y: Vec = vecFloatFromBool(@abs(dY) > glide_vel_cutoff);
 
-        const preserved_dX: Vec = @select(float, self.X_push < self.Y_push, dX, constants.ZERO_VEC);
-        const preserved_dY: Vec = @select(float, self.Y_push < self.X_push, dY, constants.ZERO_VEC);
+        std.debug.print("\nX_push[0]: {}, Y_push[0]: {}, colliding[0]: {}, floor_collision[0]: {}, do_glide_x[0]: {}, do_glide_y[0]: {}\n", .{
+            self.X_push[0],
+            self.Y_push[0],
+            self.colliding[0],
+            self.floor_collision[0],
+            do_glide_x[0],
+            do_glide_y[0],
+        });
+
+        // TODO: Project onto the normal of the push vector.
+        const preserved_dX: Vec = @select(float, @abs(self.X_push) < @abs(self.Y_push), dX, constants.ZERO_VEC);
+        const preserved_dY: Vec = @select(float, @abs(self.Y_push) < @abs(self.X_push), dY, constants.ZERO_VEC);
 
         self.physics_state.dX = self.colliding * (do_bounce_x * elasticity * bounce_dX + do_glide_x * preserved_dX) + (constants.ONE_VEC - self.colliding) * (dX);
         self.physics_state.dY = self.colliding * (do_bounce_y * elasticity * bounce_dY + do_glide_y * preserved_dY) + (constants.ONE_VEC - self.colliding) * (dY);
 
         self.physics_state.ddX = self.colliding * (-friction_coeff * preserved_dX) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dX * @abs(dX));
-        self.physics_state.ddY = self.colliding * (-friction_coeff * preserved_dY) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dY * @abs(dY) + gravity);
+        self.physics_state.ddY = self.colliding * (-friction_coeff * preserved_dY) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dY * @abs(dY)) + gravity;
     }
 
     // I realized a bit late that I don't actually need to simulate differential equations,

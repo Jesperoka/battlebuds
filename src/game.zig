@@ -214,6 +214,8 @@ pub const Game = struct {
                 &self.player_characters[player],
                 self.dynamic_entities.modes[player],
                 self.sim_state.floor_collision[player],
+                self.sim_state.physics_state.dX[player],
+                self.sim_state.physics_state.dY[player],
                 self.player_actions[player],
                 counter,
             );
@@ -224,7 +226,7 @@ pub const Game = struct {
 
             self.dynamic_entities.modes[player] = entity_mode;
 
-            self.sim_state.physics_state.dY[player] = if (movement.jump) movement.vertical_velocity else self.sim_state.physics_state.dY[player];
+            self.sim_state.physics_state.dY[player] = movement.vertical_velocity;
             self.sim_state.physics_state.dX[player] = movement.horizontal_velocity;
             self.sim_state.physics_state.ddX[player] += movement.horizontal_acceleration;
         }
@@ -277,6 +279,8 @@ pub const Game = struct {
         current_character_state: *CharacterState,
         current_entity_mode: EntityMode,
         floor_collision: bool,
+        horizontal_velocity: float,
+        vertical_velocity: float,
         action: PlayerAction,
         global_counter: u64,
     ) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
@@ -291,6 +295,8 @@ pub const Game = struct {
                     @TypeOf(character),
                     current_character_state,
                     floor_collision,
+                    horizontal_velocity,
+                    vertical_velocity,
                     action,
                     global_counter,
                 );
