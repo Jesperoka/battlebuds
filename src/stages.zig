@@ -1,14 +1,18 @@
 /// All the maps in the game.
+
+// Modules
 const constants = @import("constants.zig");
 const utils = @import("utils.zig");
 
-const HorizontalDirection = @import("game.zig").HorizontalDirection;
-const fields = @import("std").meta.fields;
+// Types
 const float = @import("types.zig").float;
+const HorizontalDirection = @import("types.zig").HorizontalDirection;
 const ID = @import("visual_assets.zig").ID;
 
-// Convex Polygons.
-// Must have vertices ordered in counterclockwise direction.
+// Functions
+const fields = @import("std").meta.fields;
+
+// Convex Polygons. Must have vertices ordered in counterclockwise direction.
 pub const Triangle = struct {
     X: @Vector(3, float),
     Y: @Vector(3, float),

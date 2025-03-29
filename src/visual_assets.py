@@ -63,7 +63,7 @@ MODE_POST_HEADER = "Mode = enum(" + BACKING_INTEGER + ") {\n"
 ENTITY_MODE_HEADER = "pub const EntityMode = union(enum(" + BACKING_INTEGER + ")) {\n"
 
 ENTITY_MODE_INIT_HEADER = """
-    pub fn init(comptime Type: type, comptime val: @TypeOf(.enum_literal)) @This() {
+    pub fn from_enum_literal(comptime Type: type, comptime val: @TypeOf(.enum_literal)) @This() {
         switch (Type) {
 """
 
