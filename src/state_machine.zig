@@ -6,6 +6,7 @@ const constants = @import("constants.zig");
 // Types
 const IDFromEntityMode = @import("visual_assets.zig").IDFromEntityMode;
 const EntityMode = @import("visual_assets.zig").EntityMode;
+const ProjectileTestMode = @import("visual_assets.zig").ProjectileTestMode;
 const PlayerAction = @import("game.zig").PlayerAction;
 const PlaneAxialDirection = @import("types.zig").PlaneAxialDirection;
 const float = @import("types.zig").float;
@@ -86,6 +87,13 @@ pub const AnimationCounterCorrection = packed struct {
     update: bool = false,
 };
 
+pub const CharacterCreatedEntity = struct {
+    entity_mode: EntityMode = .{ .dont_load = .TEXTURE },
+    horizontal_velocity: float = 0,
+    vertical_velocity: float = 0,
+    // frames_left_to_live: u16: = 0, // TODO: Can add this later if needed.
+};
+
 // Side-effect: Updates current_character_state.
 fn character_shooting_state_transition(
     CharacterType: type,
@@ -94,13 +102,16 @@ fn character_shooting_state_transition(
     vertical_velocity: float,
     global_counter: u64,
     comptime ATTACKING_DIRECTION_ENUM_LITERAL: @TypeOf(.enum_literal),
-) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
+) struct { EntityMode, CharacterMovement, AnimationCounterCorrection, CharacterCreatedEntity } {
     const horizontal_velocity_attack_modifier: float = 1.0; // TODO: switch on CharacterType.
     const num_animation_frames: u8 = @intCast(ASSETS_PER_ID[IDFromEntityMode(EntityMode.from_enum_literal(CharacterType, ATTACKING_DIRECTION_ENUM_LITERAL)).int()]);
     const frame_correction: u7 = @intCast(corrected_animation_counter(global_counter, constants.ANIMATION_SLOWDOWN_FACTOR) % num_animation_frames);
 
     current_character_state.mode = ATTACKING_DIRECTION_ENUM_LITERAL;
     current_character_state.action_dependent_frame_counter = @intFromFloat(@as(float, @floatFromInt(num_animation_frames)) * constants.ANIMATION_SLOWDOWN_FACTOR);
+    current_character_state.resources.ammo_count -= 1;
+
+    // TODO: assert positive.
 
     return .{
         EntityMode.from_enum_literal(CharacterType, ATTACKING_DIRECTION_ENUM_LITERAL),
@@ -110,8 +121,41 @@ fn character_shooting_state_transition(
             .vertical_velocity = vertical_velocity,
             .horizontal_acceleration = 0,
         },
-        .{ .frames = frame_correction, .update = true },
+        .{
+            .frames = frame_correction,
+            .update = true,
+        },
+        .{},
     };
+}
+
+fn character_attack_created_entity(comptime attack_enum_literal: @TypeOf(.enum_literal)) CharacterCreatedEntity {
+    switch (attack_enum_literal) {
+        inline .ATTACKING_UP => return .{
+                        .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_UP),
+                        .horizontal_velocity = 0.0,
+                        .vertical_velocity = 20.0,
+                    },
+        inline .ATTACKING_DOWN => return .{
+                        .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_DOWN),
+                        .horizontal_velocity = 0.0,
+                        .vertical_velocity = -20.0,
+                    },
+        inline .ATTACKING_LEFT => return .{
+                        .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_LEFT),
+                        .horizontal_velocity = -20.0,
+                        .vertical_velocity = 7.0,
+                    },
+        inline .ATTACKING_RIGHT => return .{
+                        .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_RIGHT),
+                        .horizontal_velocity = 20.0,
+                        .vertical_velocity = 7.0,
+                    },
+        else => {
+            print("Invalid attack direction: {any}", .{attack_enum_literal});
+            unreachable;
+        },
+    }
 }
 
 fn character_jumping_state_transition(
@@ -120,7 +164,7 @@ fn character_jumping_state_transition(
     horizontal_velocity: float,
     vertical_velocity: float,
     global_counter: u64,
-) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
+) struct { EntityMode, CharacterMovement, AnimationCounterCorrection, CharacterCreatedEntity } {
 
     // NOTE: Can switch on CharacterType to determine the JUMP_SQUAT_FRAMES.
 
@@ -137,6 +181,7 @@ fn character_jumping_state_transition(
             .horizontal_acceleration = 0,
         },
         .{ .frames = frame_correction, .update = true },
+        .{},
     };
 }
 
@@ -152,7 +197,7 @@ pub fn base_character_state_transition(
     vertical_velocity: float,
     action: PlayerAction,
     global_counter: u64,
-) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
+) struct { EntityMode, CharacterMovement, AnimationCounterCorrection, CharacterCreatedEntity } {
     switch (current_character_state.mode) {
         inline .NONE => {
             // TODO: Can do a spawn animation first here (.SPAWNING state transition).
@@ -165,6 +210,7 @@ pub fn base_character_state_transition(
                     .vertical_velocity = vertical_velocity,
                     .horizontal_acceleration = 0,
                 },
+                .{},
                 .{},
             };
         },
@@ -185,16 +231,18 @@ pub fn base_character_state_transition(
                 );
             }
 
-            switch (action.attack_dir) {
-                inline .UP, .DOWN, .LEFT, .RIGHT => |ATTACK_DIRECTION| return character_shooting_state_transition(
-                    CharacterType,
-                    current_character_state,
-                    horizontal_velocity,
-                    vertical_velocity,
-                    global_counter,
-                    CharacterMode.enum_literal_from_attack_direction(ATTACK_DIRECTION),
-                ),
-                inline .NONE => {},
+            if (current_character_state.resources.ammo_count > 0) {
+                switch (action.attack_dir) {
+                    inline .UP, .DOWN, .LEFT, .RIGHT => |ATTACK_DIRECTION| return character_shooting_state_transition(
+                        CharacterType,
+                        current_character_state,
+                        horizontal_velocity,
+                        vertical_velocity,
+                        global_counter,
+                        CharacterMode.enum_literal_from_attack_direction(ATTACK_DIRECTION),
+                    ),
+                    inline .NONE => {},
+                }
             }
 
             switch (action.x_dir) {
@@ -203,6 +251,7 @@ pub fn base_character_state_transition(
                     return .{
                         EntityMode.from_enum_literal(CharacterType, .STANDING),
                         .{ .jump = false, .horizontal_velocity = horizontal_velocity, .vertical_velocity = vertical_velocity, .horizontal_acceleration = 0 },
+                        .{},
                         .{},
                     };
                 },
@@ -217,6 +266,7 @@ pub fn base_character_state_transition(
                             .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION,
                         },
                         .{},
+                        .{},
                     };
                 },
                 inline .RIGHT => {
@@ -229,6 +279,7 @@ pub fn base_character_state_transition(
                             .vertical_velocity = vertical_velocity,
                             .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION,
                         },
+                        .{},
                         .{},
                     };
                 },
@@ -246,6 +297,7 @@ pub fn base_character_state_transition(
                         .horizontal_acceleration = 0,
                     },
                     .{},
+                    .{},
                 };
             } else {
                 current_character_state.action_dependent_frame_counter = constants.DEFAULT_JUMP_AGAIN_DELAY_FRAMES;
@@ -261,6 +313,7 @@ pub fn base_character_state_transition(
                                 .horizontal_acceleration = 0,
                             },
                             .{ .frames = 0, .update = true },
+                            .{},
                         };
                     },
                     inline .LEFT => {
@@ -274,6 +327,7 @@ pub fn base_character_state_transition(
                                 .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                             },
                             .{},
+                            .{},
                         };
                     },
                     inline .RIGHT => {
@@ -286,6 +340,7 @@ pub fn base_character_state_transition(
                                 .vertical_velocity = constants.DEFAULT_JUMP_VELOCITY,
                                 .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                             },
+                            .{},
                             .{},
                         };
                     },
@@ -308,10 +363,13 @@ pub fn base_character_state_transition(
                         .horizontal_acceleration = 0,
                     },
                     .{},
+                    .{},
                 };
             } else {
                 // TODO: Knockback/Recoil
                 current_character_state.mode = .STANDING;
+                // TODO: make transition function that handles current_character_state
+                // including character resources.
                 return .{
                     EntityMode.from_enum_literal(CharacterType, .STANDING),
                     .{
@@ -321,6 +379,7 @@ pub fn base_character_state_transition(
                         .horizontal_acceleration = 0,
                     },
                     .{ .frames = 0, .update = true },
+                    character_attack_created_entity(ATTACKING_DIRECTION.enum_literal()),
                 };
             }
         },
@@ -339,6 +398,20 @@ pub fn base_character_state_transition(
                 current_character_state.action_dependent_frame_counter -|= 1;
             }
 
+            if (current_character_state.resources.ammo_count > 0) {
+                switch (action.attack_dir) {
+                    inline .UP, .DOWN, .LEFT, .RIGHT => |ATTACK_DIRECTION| return character_shooting_state_transition(
+                        CharacterType,
+                        current_character_state,
+                        horizontal_velocity,
+                        vertical_velocity,
+                        global_counter,
+                        CharacterMode.enum_literal_from_attack_direction(ATTACK_DIRECTION),
+                    ),
+                    inline .NONE => {},
+                }
+            }
+
             switch (action.x_dir) {
                 inline .NONE => {
                     current_character_state.mode = if (!floor_collision) .FLYING_NEUTRAL else .STANDING;
@@ -350,6 +423,7 @@ pub fn base_character_state_transition(
                             .vertical_velocity = new_vertical_velocity,
                             .horizontal_acceleration = 0,
                         },
+                        .{},
                         .{},
                     };
                 },
@@ -364,6 +438,7 @@ pub fn base_character_state_transition(
                             .horizontal_acceleration = -constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                         },
                         .{},
+                        .{},
                     };
                 },
                 inline .RIGHT => {
@@ -376,6 +451,7 @@ pub fn base_character_state_transition(
                             .vertical_velocity = new_vertical_velocity,
                             .horizontal_acceleration = constants.DEFAULT_RUN_ACCELERATION, // TODO: own constant
                         },
+                        .{},
                         .{},
                     };
                 },

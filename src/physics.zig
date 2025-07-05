@@ -42,6 +42,7 @@ pub const PhysicsState = struct {
     ddX: Vec = @splat(0), // Not used in arithmetic functions below
     ddY: Vec = @splat(0), // Not used in arithmetic functions below
 
+    // TODO: Rework dynamic entity hitboxes.
     // TODO: This is a temporary solution. Rework entity shape.
     W: Vec = @splat(100 / constants.PIXELS_PER_METER), // Not used in arithmetic functions below
     H: Vec = @splat(100 / constants.PIXELS_PER_METER), // Not used in arithmetic functions below
@@ -132,6 +133,7 @@ pub const SimulatorState = struct {
         self.physics_state.dY = velAccTimeRelation(dt, self.physics_state.dY, self.physics_state.ddY);
     }
 
+    // TODO: Rework dynamic entity hitboxes.
     fn edges(X: Vec, Y: Vec, W: Vec, H: Vec) struct { [4]Vec, [4]Vec } {
         // 3----2
         // |    |
@@ -153,6 +155,7 @@ pub const SimulatorState = struct {
         };
     }
 
+    // TODO: Rework dynamic entity hitboxes.
     fn corners(X: Vec, Y: Vec, W: Vec, H: Vec) struct { [4]Vec, [4]Vec } {
         // 3----2
         // |    |
@@ -248,6 +251,9 @@ pub const SimulatorState = struct {
     }
 
     pub fn resolveCollisions(self: *SimulatorState, geoms: []const stages.Shape) void {
+        // TODO: Rework dynamic entity hitboxes.
+        // But when I have collision between bullets and characters, I need to check
+        // ownership of the bullet somehow.
         const X_edges_dynamic, const Y_edges_dynamic = edges(
             self.physics_state.X,
             self.physics_state.Y,
@@ -342,14 +348,14 @@ pub const SimulatorState = struct {
         const do_glide_x: Vec = vecFloatFromBool(@abs(dX) > glide_vel_cutoff);
         const do_glide_y: Vec = vecFloatFromBool(@abs(dY) > glide_vel_cutoff);
 
-        std.debug.print("\nX_push[0]: {}, Y_push[0]: {}, colliding[0]: {}, floor_collision[0]: {}, do_glide_x[0]: {}, do_glide_y[0]: {}\n", .{
-            self.X_push[0],
-            self.Y_push[0],
-            self.colliding[0],
-            self.floor_collision[0],
-            do_glide_x[0],
-            do_glide_y[0],
-        });
+        // std.debug.print("\nX_push[0]: {}, Y_push[0]: {}, colliding[0]: {}, floor_collision[0]: {}, do_glide_x[0]: {}, do_glide_y[0]: {}\n", .{
+        //     self.X_push[0],
+        //     self.Y_push[0],
+        //     self.colliding[0],
+        //     self.floor_collision[0],
+        //     do_glide_x[0],
+        //     do_glide_y[0],
+        // });
 
         // TODO: Project onto the normal of the push vector.
         const preserved_dX: Vec = @select(float, @abs(self.X_push) < @abs(self.Y_push), dX, constants.ZERO_VEC);

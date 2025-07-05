@@ -41,7 +41,34 @@ pub const ID = enum(u16) {
     CHARACTER_WURMPLE_FLYING_NEUTRAL,
     CHARACTER_WURMPLE_JUMPING,
     DONT_LOAD_TEXTURE,
+    PROJECTILE_TEST_FLYING_DOWN,
     PROJECTILE_TEST_FLYING_RIGHT,
+    PROJECTILE_TEST_FLYING_LEFT,
+    PROJECTILE_TEST_FLYING_UP,
+    UI_AMMO_EQUALS4,
+    UI_AMMO_EQUALS1,
+    UI_AMMO_EQUALS7,
+    UI_AMMO_EQUALS2,
+    UI_AMMO_EQUALS6,
+    UI_AMMO_EQUALS0,
+    UI_AMMO_EQUALS3,
+    UI_AMMO_EQUALS5,
+    UI_HEALTH_EQUALS4,
+    UI_HEALTH_EQUALS11,
+    UI_HEALTH_EQUALS1,
+    UI_HEALTH_EQUALS15,
+    UI_HEALTH_EQUALS8,
+    UI_HEALTH_EQUALS14,
+    UI_HEALTH_EQUALS12,
+    UI_HEALTH_EQUALS7,
+    UI_HEALTH_EQUALS2,
+    UI_HEALTH_EQUALS6,
+    UI_HEALTH_EQUALS9,
+    UI_HEALTH_EQUALS10,
+    UI_HEALTH_EQUALS0,
+    UI_HEALTH_EQUALS13,
+    UI_HEALTH_EQUALS3,
+    UI_HEALTH_EQUALS5,
     STAGE_METEOR_BACKGROUND,
     STAGE_METEOR_PLATFORMS,
     STAGE_METEOR_FLOOR,
@@ -91,7 +118,38 @@ pub fn IDFromEntityMode(mode: EntityMode) ID {
             .TEXTURE => return ID.DONT_LOAD_TEXTURE,
         },
         .projectile_test => |projectile_test_mode| switch (projectile_test_mode) {
+            .FLYING_DOWN => return ID.PROJECTILE_TEST_FLYING_DOWN,
             .FLYING_RIGHT => return ID.PROJECTILE_TEST_FLYING_RIGHT,
+            .FLYING_LEFT => return ID.PROJECTILE_TEST_FLYING_LEFT,
+            .FLYING_UP => return ID.PROJECTILE_TEST_FLYING_UP,
+        },
+        .ui_ammo => |ui_ammo_mode| switch (ui_ammo_mode) {
+            .EQUALS4 => return ID.UI_AMMO_EQUALS4,
+            .EQUALS1 => return ID.UI_AMMO_EQUALS1,
+            .EQUALS7 => return ID.UI_AMMO_EQUALS7,
+            .EQUALS2 => return ID.UI_AMMO_EQUALS2,
+            .EQUALS6 => return ID.UI_AMMO_EQUALS6,
+            .EQUALS0 => return ID.UI_AMMO_EQUALS0,
+            .EQUALS3 => return ID.UI_AMMO_EQUALS3,
+            .EQUALS5 => return ID.UI_AMMO_EQUALS5,
+        },
+        .ui_health => |ui_health_mode| switch (ui_health_mode) {
+            .EQUALS4 => return ID.UI_HEALTH_EQUALS4,
+            .EQUALS11 => return ID.UI_HEALTH_EQUALS11,
+            .EQUALS1 => return ID.UI_HEALTH_EQUALS1,
+            .EQUALS15 => return ID.UI_HEALTH_EQUALS15,
+            .EQUALS8 => return ID.UI_HEALTH_EQUALS8,
+            .EQUALS14 => return ID.UI_HEALTH_EQUALS14,
+            .EQUALS12 => return ID.UI_HEALTH_EQUALS12,
+            .EQUALS7 => return ID.UI_HEALTH_EQUALS7,
+            .EQUALS2 => return ID.UI_HEALTH_EQUALS2,
+            .EQUALS6 => return ID.UI_HEALTH_EQUALS6,
+            .EQUALS9 => return ID.UI_HEALTH_EQUALS9,
+            .EQUALS10 => return ID.UI_HEALTH_EQUALS10,
+            .EQUALS0 => return ID.UI_HEALTH_EQUALS0,
+            .EQUALS13 => return ID.UI_HEALTH_EQUALS13,
+            .EQUALS3 => return ID.UI_HEALTH_EQUALS3,
+            .EQUALS5 => return ID.UI_HEALTH_EQUALS5,
         },
         .stage_meteor => |stage_meteor_mode| switch (stage_meteor_mode) {
             .BACKGROUND => return ID.STAGE_METEOR_BACKGROUND,
@@ -117,6 +175,8 @@ pub const EntityMode = union(enum(u16)) {
     character_wurmple: CharacterWurmpleMode,
     dont_load: DontLoadMode,
     projectile_test: ProjectileTestMode,
+    ui_ammo: UiAmmoMode,
+    ui_health: UiHealthMode,
     stage_meteor: StageMeteorMode,
     stage_test00: StageTest00Mode,
     menu_waiting: MenuWaitingMode,
@@ -128,6 +188,8 @@ pub const EntityMode = union(enum(u16)) {
             CharacterWurmpleMode => |Enum| return @unionInit(@This(), "character_wurmple", @as(Enum, val)),
             DontLoadMode => |Enum| return @unionInit(@This(), "dont_load", @as(Enum, val)),
             ProjectileTestMode => |Enum| return @unionInit(@This(), "projectile_test", @as(Enum, val)),
+            UiAmmoMode => |Enum| return @unionInit(@This(), "ui_ammo", @as(Enum, val)),
+            UiHealthMode => |Enum| return @unionInit(@This(), "ui_health", @as(Enum, val)),
             StageMeteorMode => |Enum| return @unionInit(@This(), "stage_meteor", @as(Enum, val)),
             StageTest00Mode => |Enum| return @unionInit(@This(), "stage_test00", @as(Enum, val)),
             MenuWaitingMode => |Enum| return @unionInit(@This(), "menu_waiting", @as(Enum, val)),
@@ -174,7 +236,40 @@ pub const DontLoadMode = enum(u16) {
 };
 
 pub const ProjectileTestMode = enum(u16) {
+    FLYING_DOWN,
     FLYING_RIGHT,
+    FLYING_LEFT,
+    FLYING_UP,
+};
+
+pub const UiAmmoMode = enum(u16) {
+    EQUALS4,
+    EQUALS1,
+    EQUALS7,
+    EQUALS2,
+    EQUALS6,
+    EQUALS0,
+    EQUALS3,
+    EQUALS5,
+};
+
+pub const UiHealthMode = enum(u16) {
+    EQUALS4,
+    EQUALS11,
+    EQUALS1,
+    EQUALS15,
+    EQUALS8,
+    EQUALS14,
+    EQUALS12,
+    EQUALS7,
+    EQUALS2,
+    EQUALS6,
+    EQUALS9,
+    EQUALS10,
+    EQUALS0,
+    EQUALS13,
+    EQUALS3,
+    EQUALS5,
 };
 
 pub const StageMeteorMode = enum(u16) {
@@ -196,7 +291,7 @@ pub const MenuStageMode = enum(u16) {
     SELECTED,
 };
 
-pub const ALL: [197]Asset = .{
+pub const ALL: [251]Asset = .{
     .{ .path = "assets/visual/Character/Test/Flying_Right/1.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/2.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/3.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
@@ -366,6 +461,16 @@ pub const ALL: [197]Asset = .{
     .{ .path = "assets/visual/Character/Wurmple/Jumping/4.png", .id = .CHARACTER_WURMPLE_JUMPING },
     .{ .path = "assets/visual/Character/Wurmple/Jumping/5.png", .id = .CHARACTER_WURMPLE_JUMPING },
     .{ .path = "assets/visual/Dont/Load/Texture/1.png", .id = .DONT_LOAD_TEXTURE },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/1.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/2.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/3.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/4.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/5.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/6.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/7.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/8.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/9.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Down/10.png", .id = .PROJECTILE_TEST_FLYING_DOWN },
     .{ .path = "assets/visual/Projectile/Test/Flying_Right/1.png", .id = .PROJECTILE_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Projectile/Test/Flying_Right/2.png", .id = .PROJECTILE_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Projectile/Test/Flying_Right/3.png", .id = .PROJECTILE_TEST_FLYING_RIGHT },
@@ -376,6 +481,50 @@ pub const ALL: [197]Asset = .{
     .{ .path = "assets/visual/Projectile/Test/Flying_Right/8.png", .id = .PROJECTILE_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Projectile/Test/Flying_Right/9.png", .id = .PROJECTILE_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Projectile/Test/Flying_Right/10.png", .id = .PROJECTILE_TEST_FLYING_RIGHT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/1.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/2.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/3.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/4.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/5.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/6.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/7.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/8.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/9.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Left/10.png", .id = .PROJECTILE_TEST_FLYING_LEFT },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/1.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/2.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/3.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/4.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/5.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/6.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/7.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/8.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/9.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Projectile/Test/Flying_Up/10.png", .id = .PROJECTILE_TEST_FLYING_UP },
+    .{ .path = "assets/visual/Ui/Ammo/Equals4/1.png", .id = .UI_AMMO_EQUALS4 },
+    .{ .path = "assets/visual/Ui/Ammo/Equals1/1.png", .id = .UI_AMMO_EQUALS1 },
+    .{ .path = "assets/visual/Ui/Ammo/Equals7/1.png", .id = .UI_AMMO_EQUALS7 },
+    .{ .path = "assets/visual/Ui/Ammo/Equals2/1.png", .id = .UI_AMMO_EQUALS2 },
+    .{ .path = "assets/visual/Ui/Ammo/Equals6/1.png", .id = .UI_AMMO_EQUALS6 },
+    .{ .path = "assets/visual/Ui/Ammo/Equals0/1.png", .id = .UI_AMMO_EQUALS0 },
+    .{ .path = "assets/visual/Ui/Ammo/Equals3/1.png", .id = .UI_AMMO_EQUALS3 },
+    .{ .path = "assets/visual/Ui/Ammo/Equals5/1.png", .id = .UI_AMMO_EQUALS5 },
+    .{ .path = "assets/visual/Ui/Health/Equals4/1.png", .id = .UI_HEALTH_EQUALS4 },
+    .{ .path = "assets/visual/Ui/Health/Equals11/1.png", .id = .UI_HEALTH_EQUALS11 },
+    .{ .path = "assets/visual/Ui/Health/Equals1/1.png", .id = .UI_HEALTH_EQUALS1 },
+    .{ .path = "assets/visual/Ui/Health/Equals15/1.png", .id = .UI_HEALTH_EQUALS15 },
+    .{ .path = "assets/visual/Ui/Health/Equals8/1.png", .id = .UI_HEALTH_EQUALS8 },
+    .{ .path = "assets/visual/Ui/Health/Equals14/1.png", .id = .UI_HEALTH_EQUALS14 },
+    .{ .path = "assets/visual/Ui/Health/Equals12/1.png", .id = .UI_HEALTH_EQUALS12 },
+    .{ .path = "assets/visual/Ui/Health/Equals7/1.png", .id = .UI_HEALTH_EQUALS7 },
+    .{ .path = "assets/visual/Ui/Health/Equals2/1.png", .id = .UI_HEALTH_EQUALS2 },
+    .{ .path = "assets/visual/Ui/Health/Equals6/1.png", .id = .UI_HEALTH_EQUALS6 },
+    .{ .path = "assets/visual/Ui/Health/Equals9/1.png", .id = .UI_HEALTH_EQUALS9 },
+    .{ .path = "assets/visual/Ui/Health/Equals10/1.png", .id = .UI_HEALTH_EQUALS10 },
+    .{ .path = "assets/visual/Ui/Health/Equals0/1.png", .id = .UI_HEALTH_EQUALS0 },
+    .{ .path = "assets/visual/Ui/Health/Equals13/1.png", .id = .UI_HEALTH_EQUALS13 },
+    .{ .path = "assets/visual/Ui/Health/Equals3/1.png", .id = .UI_HEALTH_EQUALS3 },
+    .{ .path = "assets/visual/Ui/Health/Equals5/1.png", .id = .UI_HEALTH_EQUALS5 },
     .{ .path = "assets/visual/Stage/Meteor/Background/1.png", .id = .STAGE_METEOR_BACKGROUND },
     .{ .path = "assets/visual/Stage/Meteor/Platforms/1.png", .id = .STAGE_METEOR_PLATFORMS },
     .{ .path = "assets/visual/Stage/Meteor/Floor/1.png", .id = .STAGE_METEOR_FLOOR },
@@ -396,7 +545,7 @@ pub const ALL: [197]Asset = .{
     .{ .path = "assets/visual/Menu/Stage/Selected/12.png", .id = .MENU_STAGE_SELECTED },
 };
 
-pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 1, 1, 1, 1, 1, 1, 12 };
+pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 12 };
 
 // Storage for textures to be initialized at runtime.
 var character_test_flying_right_textures: [5]Texture = undefined;
@@ -422,7 +571,34 @@ var character_wurmple_attacking_up_textures: [12]Texture = undefined;
 var character_wurmple_flying_neutral_textures: [5]Texture = undefined;
 var character_wurmple_jumping_textures: [5]Texture = undefined;
 var dont_load_texture_textures: [1]Texture = undefined;
+var projectile_test_flying_down_textures: [10]Texture = undefined;
 var projectile_test_flying_right_textures: [10]Texture = undefined;
+var projectile_test_flying_left_textures: [10]Texture = undefined;
+var projectile_test_flying_up_textures: [10]Texture = undefined;
+var ui_ammo_equals4_textures: [1]Texture = undefined;
+var ui_ammo_equals1_textures: [1]Texture = undefined;
+var ui_ammo_equals7_textures: [1]Texture = undefined;
+var ui_ammo_equals2_textures: [1]Texture = undefined;
+var ui_ammo_equals6_textures: [1]Texture = undefined;
+var ui_ammo_equals0_textures: [1]Texture = undefined;
+var ui_ammo_equals3_textures: [1]Texture = undefined;
+var ui_ammo_equals5_textures: [1]Texture = undefined;
+var ui_health_equals4_textures: [1]Texture = undefined;
+var ui_health_equals11_textures: [1]Texture = undefined;
+var ui_health_equals1_textures: [1]Texture = undefined;
+var ui_health_equals15_textures: [1]Texture = undefined;
+var ui_health_equals8_textures: [1]Texture = undefined;
+var ui_health_equals14_textures: [1]Texture = undefined;
+var ui_health_equals12_textures: [1]Texture = undefined;
+var ui_health_equals7_textures: [1]Texture = undefined;
+var ui_health_equals2_textures: [1]Texture = undefined;
+var ui_health_equals6_textures: [1]Texture = undefined;
+var ui_health_equals9_textures: [1]Texture = undefined;
+var ui_health_equals10_textures: [1]Texture = undefined;
+var ui_health_equals0_textures: [1]Texture = undefined;
+var ui_health_equals13_textures: [1]Texture = undefined;
+var ui_health_equals3_textures: [1]Texture = undefined;
+var ui_health_equals5_textures: [1]Texture = undefined;
 var stage_meteor_background_textures: [1]Texture = undefined;
 var stage_meteor_platforms_textures: [1]Texture = undefined;
 var stage_meteor_floor_textures: [1]Texture = undefined;
@@ -455,7 +631,34 @@ pub var texture_slices: [ID.size()][]Texture = .{
     &character_wurmple_flying_neutral_textures,
     &character_wurmple_jumping_textures,
     &dont_load_texture_textures,
+    &projectile_test_flying_down_textures,
     &projectile_test_flying_right_textures,
+    &projectile_test_flying_left_textures,
+    &projectile_test_flying_up_textures,
+    &ui_ammo_equals4_textures,
+    &ui_ammo_equals1_textures,
+    &ui_ammo_equals7_textures,
+    &ui_ammo_equals2_textures,
+    &ui_ammo_equals6_textures,
+    &ui_ammo_equals0_textures,
+    &ui_ammo_equals3_textures,
+    &ui_ammo_equals5_textures,
+    &ui_health_equals4_textures,
+    &ui_health_equals11_textures,
+    &ui_health_equals1_textures,
+    &ui_health_equals15_textures,
+    &ui_health_equals8_textures,
+    &ui_health_equals14_textures,
+    &ui_health_equals12_textures,
+    &ui_health_equals7_textures,
+    &ui_health_equals2_textures,
+    &ui_health_equals6_textures,
+    &ui_health_equals9_textures,
+    &ui_health_equals10_textures,
+    &ui_health_equals0_textures,
+    &ui_health_equals13_textures,
+    &ui_health_equals3_textures,
+    &ui_health_equals5_textures,
     &stage_meteor_background_textures,
     &stage_meteor_platforms_textures,
     &stage_meteor_floor_textures,

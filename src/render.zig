@@ -66,6 +66,7 @@ pub const DynamicEntities = struct {
 
     X: VecI32 = @splat(0),
     Y: VecI32 = @splat(0),
+    damage_on_hit: Vec = @splat(0),
     modes: [NUM]visual_assets.EntityMode = .{.{ .dont_load = visual_assets.DontLoadMode.TEXTURE }} ** NUM,
     counter_corrections: [NUM]u64 = .{0} ** NUM,
 
@@ -141,7 +142,6 @@ pub const Renderer = struct {
         SDL.SDL_Quit();
     }
 
-
     pub fn draw_dynamic_entities(
         self: *Renderer,
         counter: usize,
@@ -186,11 +186,9 @@ pub const Renderer = struct {
         for (asset_ids) |asset_id| {
             const animation_counter = corrected_animation_counter(counter, slowdown_factor);
             self.draw_animation_frame(animation_counter, asset_id) catch unreachable;
-            // const textures = try Textures.map.lookup(asset_id, false);
-            // const texture = textures[animation_counter % textures.len];
-            // _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
         }
     }
+
     pub fn draw_animation_frame(
         self: *Renderer,
         frame_index: usize,
@@ -199,6 +197,43 @@ pub const Renderer = struct {
         const textures = try Textures.map.lookup(asset_id, false);
         const texture = textures[frame_index % textures.len];
         _ = SDL.SDL_RenderCopy(self.renderer, texture.ptr, null, null);
+    }
+
+    pub fn draw_looping_animations_at(
+        self: *Renderer,
+        counter: usize,
+        asset_ids: []const visual_assets.ID,
+        X: []const i32,
+        Y: []const i32,
+        comptime slowdown_factor: float,
+    ) !void {
+        for (X, Y, asset_ids) |x, y, asset_id| {
+            const animation_counter = corrected_animation_counter(counter, slowdown_factor);
+            self.draw_animation_frame_at(animation_counter, asset_id, x, y) catch unreachable;
+        }
+    }
+
+    pub fn draw_animation_frame_at(
+        self: *Renderer,
+        frame_index: usize,
+        asset_id: visual_assets.ID,
+        x: i32,
+        y: i32,
+    ) !void {
+        const textures = try Textures.map.lookup(asset_id, false);
+        const texture = textures[frame_index % textures.len];
+
+        _ = SDL.SDL_RenderCopy(
+            self.renderer,
+            texture.ptr,
+            null,
+            &SDL.SDL_Rect{
+                .x = x,
+                .y = y,
+                .w = texture.width,
+                .h = texture.height,
+            },
+        );
     }
 
     pub fn render(self: *Renderer) void {
@@ -232,6 +267,8 @@ pub const Textures = struct {
             // For simplicity, just check all visual assets.
             for (visual_assets.ALL) |visual_asset| {
                 if (visual_asset.id != id or visual_asset.id == .DONT_LOAD_TEXTURE) continue;
+
+                std.debug.print("Loading texture for ID: {s}\n", .{visual_asset.path});
 
                 loadTexture(
                     &visual_assets.texture_slices[id.int()][count],
@@ -352,16 +389,17 @@ fn toUsizeChecked(integer: anytype) usize {
     return @as(usize, @intCast(integer));
 }
 
-// C-style pointer arithmatic
 fn copyPixels(start_addr_src: usize, start_addr_dest: usize, stride_src: usize, stride_dest: usize, width: usize, height: usize) void {
     for (0..height) |row| {
-        var ptr_src = @as([*]u32, @ptrFromInt(start_addr_src + row * stride_src));
-        var ptr_dest = @as([*]u32, @ptrFromInt(start_addr_dest + row * stride_dest));
+        const src_row_addr = start_addr_src + row * stride_src;
+        const dest_row_addr = start_addr_dest + row * stride_dest;
 
-        for (0..width) |_| {
-            ptr_src += 1;
-            ptr_dest += 1;
-            ptr_dest[0] = ptr_src[0];
+        const ptr_src = @as([*]u32, @ptrFromInt(src_row_addr));
+        var ptr_dest = @as([*]u32, @ptrFromInt(dest_row_addr));
+
+        // This is the fix - use array indexing instead of pointer arithmetic
+        for (0..width) |col| {
+            ptr_dest[col] = ptr_src[col];
         }
     }
 }

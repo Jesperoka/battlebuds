@@ -3,7 +3,7 @@ Learning Zig, ~~Libdrm~~ ~~XCB~~ SDL2 and HID controller interfacing by making a
 
 This is for educational purposes for the forseeable future.
 
-Developing in WSL2 with x86_64 architecture.
+Developing in WSL2 with x86\_64 architecture.
 ```
     $ uname -a
 
@@ -192,7 +192,7 @@ and I've gone for a space theme because it's one of the easier to draw. My frien
 to make some music for the game, so now it really feels like we're getting somewhere.
 
 <div align="center">
-    <img src="assets/Stages.png" width="550">
+    <img src="assets/visual/Stage/Meteor/Background/1.png" width="550">
     <br>Space stage background. Made in ProCreate<br><br>
 </div>
 We'll figure out the artstyle as we go. It's been a while since I did any art, so I'll have to re-learn.

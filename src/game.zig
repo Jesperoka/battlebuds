@@ -27,6 +27,7 @@ const AudioAssetID = @import("audio_assets.zig").ID;
 const CharacterState = @import("state_machine.zig").CharacterState;
 const CharacterMovement = @import("state_machine.zig").CharacterMovement;
 const AnimationCounterCorrection = @import("state_machine.zig").AnimationCounterCorrection;
+const CharacterCreatedEntity = @import("state_machine.zig").CharacterCreatedEntity;
 
 // Functions
 const IDFromEntityMode = @import("visual_assets.zig").IDFromEntityMode;
@@ -112,6 +113,7 @@ pub const Game = struct {
                     &[_]VisualAssetID{VisualAssetID.MENU_WAITING_FORINPUT},
                     constants.STAGE_SELECT_ANIMATION_TIMESTEP_NS,
                 ) catch unreachable;
+
                 self.renderer.render();
 
                 if (self.player_actions[0].jump) break :stage_selection_loop;
@@ -136,7 +138,7 @@ pub const Game = struct {
             self.num_players = 2;
 
             // This is the actual character assignments.
-            // NOTE: can maybe use EntityMode.init() here to default init mode of all characters.
+            // NOTE: can maybe use EntityMode.from_enum_literal() here to default init mode of all characters.
             const entity_modes: [constants.MAX_NUM_PLAYERS]EntityMode = .{
                 .{ .character_test = .STANDING },
                 .{ .character_wurmple = .STANDING },
@@ -208,9 +210,65 @@ pub const Game = struct {
         return num_animation_frames;
     }
 
+    // TODO: hardcoded 15 should be constants.MAX_HEALTH_POINTS
+    // TODO: hardcoded 7 should be constants.MAX_AMMO_COUNT
+    // TODO: hardcoded 2 should be constants.UI_ASSETS_PER_PLAYER
+    // TODO: move this elsewhere later.
+    fn ui_assets_from_player_states(player_states: [constants.MAX_NUM_PLAYERS]CharacterState) [constants.MAX_NUM_PLAYERS * 2 + constants.MAX_NUM_PLAYERS]VisualAssetID {
+        const UI_HEALTH_ASSET_IDS: [15 + 1]VisualAssetID = comptime .{
+            VisualAssetID.UI_HEALTH_EQUALS0,
+            VisualAssetID.UI_HEALTH_EQUALS1,
+            VisualAssetID.UI_HEALTH_EQUALS2,
+            VisualAssetID.UI_HEALTH_EQUALS3,
+            VisualAssetID.UI_HEALTH_EQUALS4,
+            VisualAssetID.UI_HEALTH_EQUALS5,
+            VisualAssetID.UI_HEALTH_EQUALS6,
+            VisualAssetID.UI_HEALTH_EQUALS7,
+            VisualAssetID.UI_HEALTH_EQUALS8,
+            VisualAssetID.UI_HEALTH_EQUALS9,
+            VisualAssetID.UI_HEALTH_EQUALS10,
+            VisualAssetID.UI_HEALTH_EQUALS11,
+            VisualAssetID.UI_HEALTH_EQUALS12,
+            VisualAssetID.UI_HEALTH_EQUALS13,
+            VisualAssetID.UI_HEALTH_EQUALS14,
+            VisualAssetID.UI_HEALTH_EQUALS15,
+        };
+
+        const UI_AMMO_ASSET_IDS: [7 + 1]VisualAssetID = comptime .{
+            VisualAssetID.UI_AMMO_EQUALS0,
+            VisualAssetID.UI_AMMO_EQUALS1,
+            VisualAssetID.UI_AMMO_EQUALS2,
+            VisualAssetID.UI_AMMO_EQUALS3,
+            VisualAssetID.UI_AMMO_EQUALS4,
+            VisualAssetID.UI_AMMO_EQUALS5,
+            VisualAssetID.UI_AMMO_EQUALS6,
+            VisualAssetID.UI_AMMO_EQUALS7,
+        };
+
+        return .{
+            UI_HEALTH_ASSET_IDS[player_states[0].resources.health_points],
+            UI_HEALTH_ASSET_IDS[player_states[1].resources.health_points],
+            UI_HEALTH_ASSET_IDS[player_states[2].resources.health_points],
+            UI_HEALTH_ASSET_IDS[player_states[3].resources.health_points],
+            UI_AMMO_ASSET_IDS[player_states[0].resources.ammo_count],
+            UI_AMMO_ASSET_IDS[player_states[1].resources.ammo_count],
+            UI_AMMO_ASSET_IDS[player_states[2].resources.ammo_count],
+            UI_AMMO_ASSET_IDS[player_states[3].resources.ammo_count],
+            // TODO: Add player UI frames.
+            // VisualAssetID.UI_FRAME_PLAYER1,
+            // VisualAssetID.UI_FRAME_PLAYER2,
+            // VisualAssetID.UI_FRAME_PLAYER3,
+            // VisualAssetID.UI_FRAME_PLAYER4,
+            VisualAssetID.DONT_LOAD_TEXTURE,
+            VisualAssetID.DONT_LOAD_TEXTURE,
+            VisualAssetID.DONT_LOAD_TEXTURE,
+            VisualAssetID.DONT_LOAD_TEXTURE,
+        };
+    }
+
     fn step(self: *Game, counter: u64) bool {
         for (0..self.num_players) |player| {
-            const entity_mode, const movement, const counter_correction = handle_character_action(
+            const entity_mode, const movement, const counter_correction, const character_created_entity = handle_character_action(
                 &self.player_characters[player],
                 self.dynamic_entities.modes[player],
                 self.sim_state.floor_collision[player],
@@ -229,9 +287,100 @@ pub const Game = struct {
             self.sim_state.physics_state.dY[player] = movement.vertical_velocity;
             self.sim_state.physics_state.dX[player] = movement.horizontal_velocity;
             self.sim_state.physics_state.ddX[player] += movement.horizontal_acceleration;
+
+            inline for (0..7) |local_index| {
+                const player_bullet_begin: usize = constants.MAX_NUM_PLAYERS + player * 7;
+
+                if (self.sim_state.floor_collision[player_bullet_begin + local_index]) {
+                    // TODO: Can set to ground state here, and let persist for a little while/animate disappearance.
+                    self.dynamic_entities.modes[player_bullet_begin + local_index] = EntityMode.from_enum_literal(DontLoadMode, .TEXTURE);
+                    self.dynamic_entities.damage_on_hit[player_bullet_begin + local_index] = 0.0;
+                }
+            }
+
+            switch (character_created_entity.entity_mode) {
+                inline .dont_load => {},
+                inline .projectile_test => {
+                    // TODO: Update vector to track projectile modes.
+
+                    const character_created_entity_index: usize = constants.MAX_NUM_PLAYERS + player * 7 + self.player_characters[player].resources.ammo_count;
+
+                    self.dynamic_entities.modes[character_created_entity_index] = character_created_entity.entity_mode;
+                    self.dynamic_entities.damage_on_hit[character_created_entity_index] = 1.0;
+
+                    // TODO: Temporary until dynamic entity hitboxed are reworked.
+                    self.sim_state.physics_state.W[character_created_entity_index] = 0.15;
+                    self.sim_state.physics_state.H[character_created_entity_index] = 0.15;
+
+                    self.sim_state.physics_state.X[character_created_entity_index] = self.sim_state.physics_state.X[player];
+                    self.sim_state.physics_state.Y[character_created_entity_index] = self.sim_state.physics_state.Y[player];
+                    self.sim_state.physics_state.dX[character_created_entity_index] = character_created_entity.horizontal_velocity;
+                    self.sim_state.physics_state.dY[character_created_entity_index] = character_created_entity.vertical_velocity;
+                },
+                else => {
+                    std.debug.print("wtf: {any}", .{character_created_entity.entity_mode});
+                    unreachable;
+                },
+            }
+
+            // TODO: Temporary inline implementation for testing.
+            for (0..player) |other_player| {
+                const other_player_bullet_begin: usize = constants.MAX_NUM_PLAYERS + other_player * 7;
+
+                const too_close, const damage_vector = temp: {
+                    var too_close_x: @Vector(7, bool) = undefined;
+                    var too_close_y: @Vector(7, bool) = undefined;
+                    var damage_vector: @Vector(7, f32) = undefined;
+
+                    inline for (0..7) |local_index| {
+                        const distance_x: f32 = @abs(self.sim_state.physics_state.X[other_player_bullet_begin + local_index] - self.sim_state.physics_state.X[player]);
+                        const distance_y: f32 = @abs(self.sim_state.physics_state.Y[other_player_bullet_begin + local_index] - self.sim_state.physics_state.Y[player]);
+
+                        too_close_x[local_index] = distance_x < self.sim_state.physics_state.W[player] / 2.0;
+                        too_close_y[local_index] = distance_y < self.sim_state.physics_state.H[player] / 2.0;
+                        damage_vector[local_index] = self.dynamic_entities.damage_on_hit[other_player_bullet_begin + local_index];
+                        self.dynamic_entities.damage_on_hit[other_player_bullet_begin + local_index] = 0.0;
+                    }
+                    break :temp .{ @select(bool, too_close_x, too_close_y, too_close_x), damage_vector };
+                };
+
+                const ZERO: @Vector(7, f32) = comptime @splat(0.0);
+                const damage = @reduce(.Add, @select(f32, too_close, damage_vector, ZERO));
+
+                self.player_characters[player].resources.health_points -|= @intFromFloat(damage);
+            }
+
+            // TODO: Temporary inline implementation for testing.
+            for (player + 1..self.num_players) |other_player| {
+                const other_player_bullet_begin: usize = constants.MAX_NUM_PLAYERS + other_player * 7;
+
+                const too_close, const damage_vector = temp: {
+                    var too_close_x: @Vector(7, bool) = undefined;
+                    var too_close_y: @Vector(7, bool) = undefined;
+                    var damage_vector: @Vector(7, f32) = undefined;
+
+                    inline for (0..7) |local_index| {
+                        const distance_x: f32 = @abs(self.sim_state.physics_state.X[other_player_bullet_begin + local_index] - self.sim_state.physics_state.X[player]);
+                        const distance_y: f32 = @abs(self.sim_state.physics_state.Y[other_player_bullet_begin + local_index] - self.sim_state.physics_state.Y[player]);
+
+                        too_close_x[local_index] = distance_x < self.sim_state.physics_state.W[player] / 2.0;
+                        too_close_y[local_index] = distance_y < self.sim_state.physics_state.H[player] / 2.0;
+                        damage_vector[local_index] = self.dynamic_entities.damage_on_hit[other_player_bullet_begin + local_index];
+                        self.dynamic_entities.damage_on_hit[other_player_bullet_begin + local_index] = 0.0;
+                    }
+                    break :temp .{ @select(bool, too_close_x, too_close_y, too_close_x), damage_vector };
+                };
+
+                const ZERO: @Vector(7, f32) = comptime @splat(0.0);
+                const damage = @reduce(.Add, @select(f32, too_close, damage_vector, ZERO));
+
+                self.player_characters[player].resources.health_points -|= @intFromFloat(damage);
+            }
         }
 
         self.sim_state.newtonianMotion(constants.TIMESTEP_S);
+        // TODO: Rename function to indicate that it resolves collisions between dynamic and static entities.
+        // It does not resolve collisions between dynamic entities.
         self.sim_state.resolveCollisions(self.stage_assets.geometry);
         self.sim_state.gamePhysics();
 
@@ -240,6 +389,17 @@ pub const Game = struct {
         self.renderer.draw_looping_animations(counter, self.stage_assets.background, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
         self.renderer.draw_dynamic_entities(counter, self.dynamic_entities, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
         self.renderer.draw_looping_animations(counter, self.stage_assets.foreground, constants.ANIMATION_SLOWDOWN_FACTOR) catch unreachable;
+
+        // TODO: WIP
+        self.renderer.draw_looping_animations_at(
+            counter,
+            &ui_assets_from_player_states(self.player_characters),
+            // Just use some hardcoded pixel values for SDL_Rect for now
+            &.{ 0, 400, 800, 1200, 0, 400, 800, 1200, 0, 0, 0, 0 },
+            &.{ 500, 500, 500, 500, 620, 620, 620, 620, 0, 0, 0, 0 },
+            constants.ANIMATION_SLOWDOWN_FACTOR,
+        ) catch unreachable;
+
         self.renderer.render();
 
         return false; // Temporary solution until game has win-condition.
@@ -283,11 +443,11 @@ pub const Game = struct {
         vertical_velocity: float,
         action: PlayerAction,
         global_counter: u64,
-    ) struct { EntityMode, CharacterMovement, AnimationCounterCorrection } {
+    ) struct { EntityMode, CharacterMovement, AnimationCounterCorrection, CharacterCreatedEntity } {
         current_character_state.resources.has_jump = floor_collision or current_character_state.resources.has_jump;
 
         switch (current_entity_mode) {
-            inline .dont_load => return .{ current_entity_mode, .{}, .{} },
+            inline .dont_load => return .{ current_entity_mode, .{}, .{}, .{} },
             inline .character_wurmple,
             .character_test,
             => |character| {
