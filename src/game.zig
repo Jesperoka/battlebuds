@@ -70,6 +70,7 @@ pub const Game = struct {
             .num_players = input_handler.num_devices, // Relies on being init after input_handler.
         };
     }
+
     pub fn deinit(self: *Game) void {
         self.input_handler.deinit();
         self.audio_player.deinit();
@@ -558,7 +559,7 @@ pub const InputHandler = struct {
     }
 
     fn read_input(self: *InputHandler) void {
-        // Don't need mutex, because we care more about performance than correctness.
+        // Don't need mutex, because we care more about performance than correctness. Can use atomics later if needed.
         for (0..self.num_devices) |i| {
             utils.assert(hidapi.hid_read_timeout(
                 self.devices[i],

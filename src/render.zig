@@ -1,11 +1,8 @@
 /// Using SDL2 for window management and pointers to GPU buffers.
 const std = @import("std");
 const SDL = @import("sdl2");
-const png = @cImport(@cInclude("png.h"));
-const c = @cImport({
-    @cInclude("stdlib.h");
-    @cInclude("string.h");
-});
+const decode_png = @import("decode_png.zig"); // @cImport(@cInclude("png.h"));
+const PngDecodeError = @import("decode_png.zig").PngDecodeError;
 
 const constants = @import("constants.zig");
 const visual_assets = @import("visual_assets.zig");
@@ -46,20 +43,6 @@ fn vecToPixelY(Y: Vec) VecI32 {
 
     return @intFromFloat(-Y * ppm + @as(Vec, @floatFromInt(screen_halfheight)));
 }
-
-const Image = struct {
-    buffer: ?*anyopaque,
-    width: c_int,
-    height: c_int,
-    stride: c_int,
-    bit_depth: c_int,
-
-    fn free(self: Image) void {
-        c.free(self.buffer);
-    }
-};
-
-const ReadError = error{ OutOfMemory, FailedImageRead };
 
 pub const DynamicEntities = struct {
     const NUM = constants.VEC_LENGTH;
@@ -260,20 +243,24 @@ pub const Textures = struct {
     pub fn init(
         renderer: *SDL.SDL_Renderer,
     ) void {
+        var arena = std.heap.ArenaAllocator.init(std.heap.raw_c_allocator);
+        defer arena.deinit(); // TODO: Why does this cause an alignment issue?
+
         inline for (std.meta.fields(visual_assets.ID)) |enum_field| {
             const id: visual_assets.ID = @enumFromInt(enum_field.value);
             var count: usize = 0;
+
+            std.debug.print("Loading textures for ID: {any}\n", .{id});
 
             // For simplicity, just check all visual assets.
             for (visual_assets.ALL) |visual_asset| {
                 if (visual_asset.id != id or visual_asset.id == .DONT_LOAD_TEXTURE) continue;
 
-                std.debug.print("Loading texture for ID: {s}\n", .{visual_asset.path});
-
                 loadTexture(
+                    renderer,
+                    arena.allocator(),
                     &visual_assets.texture_slices[id.int()][count],
                     visual_asset.path,
-                    renderer,
                     FORMAT,
                     ACCESS_MODE,
                 ) catch unreachable;
@@ -296,26 +283,29 @@ pub const Textures = struct {
 };
 
 fn loadTexture(
+    renderer: *SDL.SDL_Renderer,
+    allocator: std.mem.Allocator,
     texture: *visual_assets.Texture,
     path: []const u8,
-    renderer: *SDL.SDL_Renderer,
     comptime format: c_int,
     comptime access_mode: c_int,
-) ReadError!void {
-    const c_str_path = @as([*:0]const u8, @ptrCast(path));
-    const image = try readPng(c_str_path, png.PNG_FORMAT_RGBA);
-    defer image.free();
+) PngDecodeError!void {
+    const image = try decode_png.decode_png_file(
+        .{ .optimistic = true },
+        path,
+        allocator,
+    );
 
     texture.ptr = SDL.SDL_CreateTexture(
         renderer,
         format,
         access_mode,
-        image.width,
-        image.height,
+        @intCast(image.width),
+        @intCast(image.height),
     ) orelse utils.sdlPanic();
 
-    texture.width = image.width;
-    texture.height = image.height;
+    texture.width = @intCast(image.width);
+    texture.height = @intCast(image.height);
 
     var pixels: ?*c_int = undefined;
     var stride: c_int = undefined;
@@ -327,78 +317,36 @@ fn loadTexture(
         "SDL_LockTexture() failed.",
     );
 
-    const stride_gpu = toUsizeChecked(stride);
-    const stride_cpu = toUsizeChecked(image.stride);
-    const start_addr_gpu = opaqueToAddr(pixels_ptr[0].?);
-    const start_addr_cpu = opaqueToAddr(image.buffer.?);
-    const width = toUsizeChecked(image.width);
-    const height = toUsizeChecked(image.height);
+    const stride_gpu: usize = @intCast(stride);
+    const start_addr_gpu = @intFromPtr(@as(*u8, @ptrCast(pixels_ptr[0].?)));
 
-    copyPixels(start_addr_cpu, start_addr_gpu, stride_cpu, stride_gpu, width, height);
+    copyPixels(
+        image,
+        start_addr_gpu,
+        stride_gpu,
+    );
 
     SDL.SDL_UnlockTexture(texture.ptr);
-
-    // return .{ .ptr = texture.ptr, .width = image.width, .height = image.height };
 }
 
-// Translated expanded C macros from libpng
-//-----------------------------------------
-fn imageSize(image: png.png_image) c_ulong {
-    return @as(c_ulong, @bitCast(@as(c_ulong, ((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 4)) >> @intCast(2)) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.height))) *% ((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else (@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.width))))));
-}
-fn imageRowStride(image: png.png_image) c_int {
-    return @as(c_int, @bitCast((if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else (@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% @as(c_uint, @bitCast(image.width))));
-}
-fn imagePixelSize(image: png.png_image) c_int {
-    return @as(c_int, @bitCast(if ((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 8)) != 0) @as(c_uint, @bitCast(@as(c_int, 1))) else ((@as(c_uint, @bitCast(image.format)) & (@as(c_uint, 2) | @as(c_uint, 1))) +% @as(c_uint, @bitCast(@as(c_int, 1)))) *% (((@as(c_uint, @bitCast(image.format)) & @as(c_uint, 4)) >> @intCast(2)) +% @as(c_uint, @bitCast(@as(c_int, 1))))));
-}
-//-----------------------------------------
-
-// Based on example.c from libpng. Note: calls malloc
-fn readPng(path: [*:0]const u8, format: c_uint) ReadError!Image {
-    var img: png.png_image = undefined;
-    _ = c.memset(&img, 0, @sizeOf(png.png_image));
-    img.version = png.PNG_IMAGE_VERSION;
-
-    if (png.png_image_begin_read_from_file(&img, path) != 0) {
-        img.format = format;
-        const buf = c.malloc(imageSize(img));
-
-        if (buf == null) {
-            png.png_image_free(&img);
-            return ReadError.OutOfMemory;
-        }
-        if (png.png_image_finish_read(&img, null, buf, 0, null) != 0) {
-            const pixel_size = imagePixelSize(img);
-            const stride = imageRowStride(img);
-            return Image{ .buffer = buf.?, .width = @intCast(img.width), .height = @intCast(img.height), .stride = stride, .bit_depth = 8 * pixel_size };
-        } else {
-            c.free(buf); // Buffer was allocated, but image read failed.
-        }
-    }
-    std.debug.print("Error message from libpng: {s}", .{img.message});
-    return ReadError.FailedImageRead;
+fn readPng(path: []const u8, allocator: std.mem.Allocator) PngDecodeError!decode_png.PngImage {
+    return decode_png.decode_png_file(.{ .optimistic = true }, path, allocator);
 }
 
-fn opaqueToAddr(ptr: *anyopaque) usize {
-    return @intFromPtr(@as(*u8, @ptrCast(ptr)));
-}
-
-fn toUsizeChecked(integer: anytype) usize {
-    @setRuntimeSafety(true);
-    return @as(usize, @intCast(integer));
-}
-
-fn copyPixels(start_addr_src: usize, start_addr_dest: usize, stride_src: usize, stride_dest: usize, width: usize, height: usize) void {
-    for (0..height) |row| {
-        const src_row_addr = start_addr_src + row * stride_src;
+fn copyPixels(
+    image: decode_png.PngImage,
+    start_addr_dest: usize,
+    stride_dest: usize,
+) void {
+    for (0..image.height) |row| {
+        // const src_row_addr = start_addr_src + row * stride_src;
         const dest_row_addr = start_addr_dest + row * stride_dest;
 
-        const ptr_src = @as([*]u32, @ptrFromInt(src_row_addr));
+        // const ptr_src = @as([*]u32, @ptrFromInt(src_row_addr));
+        const ptr_src = @as([*]u32, @ptrCast(@alignCast(@constCast(&image.data[row * image.stride]))));
         var ptr_dest = @as([*]u32, @ptrFromInt(dest_row_addr));
 
-        // This is the fix - use array indexing instead of pointer arithmetic
-        for (0..width) |col| {
+        for (0..image.width) |col| {
             ptr_dest[col] = ptr_src[col];
         }
     }

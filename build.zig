@@ -22,27 +22,36 @@ fn os_from_string(os_string: []const u8) !std.Target.Os.Tag {
 }
 
 pub fn build(b: *std.Build) !void {
-    // const target_architecture = b.option(
-    //     []const u8,
-    //     "for_arch",
-    //     "The target architecture string.",
-    // ) orelse "x86_64";
-    //
-    // const target_operating_system = b.option(
-    //     []const u8,
-    //     "for_os",
-    //     "The target operating system string.",
-    // ) orelse "linux";
-    //
-    //
-    // const target = b.resolveTargetQuery(.{
-    //     .cpu_arch = try cpu_arch_from_string(target_architecture),
-    //     .os_tag = try os_from_string(target_operating_system),
-    // });
+    // NOTE:
+    //      Trying to use the `b.resolveTargetQuery` function to manually resolve the target architecture and operating system.
+    //      I'm doing this so I can cross-compile later.
+
+    const target_architecture = b.option(
+        []const u8,
+        "for_arch",
+        "The target architecture string.",
+    ) orelse "x86_64";
+
+    const target_operating_system = b.option(
+        []const u8,
+        "for_os",
+        "The target operating system string.",
+    ) orelse "linux";
+
+    _ = b.resolveTargetQuery(.{
+        .cpu_arch = try cpu_arch_from_string(target_architecture),
+        .os_tag = try os_from_string(target_operating_system),
+        .abi = .gnu,
+    });
 
     const target = b.standardTargetOptions(.{});
 
-    const optimize = b.standardOptimizeOption(.{.preferred_optimize_mode = .ReleaseSafe });
+    // target.result = default_target.result;
+
+    // std.debug.print("\nstandardTargetOptions: {any}\n", .{default_target.result});
+    std.debug.print("\n\n\nresolveTargetQuery: {any}\n", .{target.result});
+
+    const optimize = b.standardOptimizeOption(.{.preferred_optimize_mode = .ReleaseFast });
 
     const exe = b.addExecutable(.{
         .name = "battlebuds",
@@ -52,14 +61,13 @@ pub fn build(b: *std.Build) !void {
     });
 
     // link libraries
-    exe.linkSystemLibrary("c");
-    exe.linkSystemLibrary("png");
     exe.linkSystemLibrary("hidapi-libusb");
 
-    //
     // const libpng_include_path = std.Build.LazyPath{.cwd_relative = "/usr/include/libpng16" };
     // exe.addIncludePath(libpng_include_path);
-    //
+
+    exe.addLibraryPath(std.Build.LazyPath{.cwd_relative = "/usr/lib/x86_64-linux-gnu" });
+
     // const libpng_obj_path = std.Build.LazyPath{.cwd_relative = "/usr/lib/x86_64-linux-gnu/libpng16.a" };
     // exe.addObjectFile(libpng_obj_path);
 

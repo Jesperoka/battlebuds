@@ -328,7 +328,7 @@ pub const SimulatorState = struct {
 
     pub fn gamePhysics(self: *SimulatorState) void {
         const gravity: Vec = @splat(-50.81);
-        const friction_coeff: Vec = @splat(0.8);
+        const friction_coeff: Vec = @splat(2.8);
         const drag_coeff: Vec = @splat(0.2);
         const elasticity: Vec = @splat(0.3);
 
@@ -364,8 +364,8 @@ pub const SimulatorState = struct {
         self.physics_state.dX = self.colliding * (do_bounce_x * elasticity * bounce_dX + do_glide_x * preserved_dX) + (constants.ONE_VEC - self.colliding) * (dX);
         self.physics_state.dY = self.colliding * (do_bounce_y * elasticity * bounce_dY + do_glide_y * preserved_dY) + (constants.ONE_VEC - self.colliding) * (dY);
 
-        self.physics_state.ddX = self.colliding * (-friction_coeff * preserved_dX) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dX * @abs(dX));
-        self.physics_state.ddY = self.colliding * (-friction_coeff * preserved_dY) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dY * @abs(dY)) + gravity;
+        self.physics_state.ddX = vecFloatFromBool(self.floor_collision) * (-friction_coeff * preserved_dX) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dX * @abs(dX));
+        self.physics_state.ddY = vecFloatFromBool(self.floor_collision) * (-@as(Vec, @splat(0.0)) * preserved_dY) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dY * @abs(dY)) + gravity;
     }
 
     // I realized a bit late that I don't actually need to simulate differential equations,

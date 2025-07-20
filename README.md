@@ -10,6 +10,20 @@ Developing in WSL2 with x86\_64 architecture.
 Linux J 5.15.153.1-microsoft-standard-WSL2 #1 SMP Fri Mar 29 23:14:13 UTC 2024 x86_64 x86_64 x86_64 GNU/Linux
 ```
 
+```bash
+# NOTE:
+#   https://github.com/microsoft/WSL/issues/11795
+#   After an update to WSL they broke something,
+#   so now we first need to run:
+sudo modprobe vhci_hcd
+```
+
+To expose USB devices to WSL:
+```bash
+usbipd list # To find your device(s).
+usbipd attach --wsl --busid 1-5 # Where "1-5" is whatever busid your device(s) is/are on.
+```
+
 
 # TODO list to get started:
 
@@ -85,7 +99,7 @@ to get information about the Shm XCB extension. Haven't actually tried though.
 ### XCB and SDL2
 After struggling with XCB for a while, I am moving on to using SDL2. XCB documentation is a bit lacking in some areas,
 and I was not able to find good enough examples for pixmap drawing, mostly running into issues of formatting the data
-buffer correctly. I ended up trying the XCB extension xcb_image.h, but even with the helper functions it provides the
+buffer correctly. I ended up trying the XCB extension xcb\_image.h, but even with the helper functions it provides the
 pixmap format did not seem to be correct. The specific documentation on drawing pixmaps is missing from the XCB documentation.
 I could only find people drawing bitmaps, or using other image formats. A considerable amount of trouble also came from
 the C Zig interop, which I am still learning. It's not as easy as some would suggest to get the correct types at the
@@ -95,7 +109,7 @@ I the process I did watch this talk: [How to Use Abstraction to Kill Your API - 
 so I might take a look at [ZigX](https://github.com/marler8997/zigx) in the future. But for now [SDL2](https://github.com/ikskuh/SDL.zig).
 
 ### SDL2 and HIDAPI
-It appears the Zig bindings for SDL2 that I'm using don't yet cover the SDL_hid* functions, so I'm using libhidapi directly,
+It appears the Zig bindings for SDL2 that I'm using don't yet cover the SDL\_hid* functions, so I'm using libhidapi directly,
 with the libusb-1.0 backend.
 
 ### USB Permissions

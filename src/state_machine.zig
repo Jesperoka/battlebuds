@@ -132,25 +132,25 @@ fn character_shooting_state_transition(
 fn character_attack_created_entity(comptime attack_enum_literal: @TypeOf(.enum_literal)) CharacterCreatedEntity {
     switch (attack_enum_literal) {
         inline .ATTACKING_UP => return .{
-                        .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_UP),
-                        .horizontal_velocity = 0.0,
-                        .vertical_velocity = 20.0,
-                    },
+            .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_UP),
+            .horizontal_velocity = 0.0,
+            .vertical_velocity = 20.0,
+        },
         inline .ATTACKING_DOWN => return .{
-                        .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_DOWN),
-                        .horizontal_velocity = 0.0,
-                        .vertical_velocity = -20.0,
-                    },
+            .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_DOWN),
+            .horizontal_velocity = 0.0,
+            .vertical_velocity = -20.0,
+        },
         inline .ATTACKING_LEFT => return .{
-                        .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_LEFT),
-                        .horizontal_velocity = -20.0,
-                        .vertical_velocity = 7.0,
-                    },
+            .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_LEFT),
+            .horizontal_velocity = -20.0,
+            .vertical_velocity = 7.0,
+        },
         inline .ATTACKING_RIGHT => return .{
-                        .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_RIGHT),
-                        .horizontal_velocity = 20.0,
-                        .vertical_velocity = 7.0,
-                    },
+            .entity_mode = EntityMode.from_enum_literal(ProjectileTestMode, .FLYING_RIGHT),
+            .horizontal_velocity = 20.0,
+            .vertical_velocity = 7.0,
+        },
         else => {
             print("Invalid attack direction: {any}", .{attack_enum_literal});
             unreachable;
@@ -220,6 +220,28 @@ pub fn base_character_state_transition(
         => {
 
             // TODO: if enough frames in a row don't have floor_collision, transition to FLYING_XXXX depending on movement.
+            // TODO: TEMP first solution
+            if (!floor_collision) {
+                if (current_character_state.action_dependent_frame_counter == 0) {
+                    current_character_state.mode = .FLYING_NEUTRAL;
+                    current_character_state.resources.has_jump = true;
+                    return .{
+                        EntityMode.from_enum_literal(CharacterType, .FLYING_NEUTRAL),
+                        .{
+                            .jump = false,
+                            .horizontal_velocity = horizontal_velocity,
+                            .vertical_velocity = vertical_velocity,
+                            .horizontal_acceleration = 0,
+                        },
+                        .{},
+                        .{},
+                    };
+                } else {
+                    current_character_state.action_dependent_frame_counter -|= 1;
+                }
+            } else {
+                current_character_state.action_dependent_frame_counter = 5;
+            }
 
             if (action.jump) {
                 return character_jumping_state_transition(
