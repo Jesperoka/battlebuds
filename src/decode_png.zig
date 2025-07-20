@@ -10,6 +10,8 @@ const DecompressionReadError = @TypeOf(@constCast(&std.compress.zlib.decompresso
 const Allocator = std.mem.Allocator;
 const TARGET_ENDIANESS = @import("builtin").target.cpu.arch.endian();
 
+const Instant = std.time.Instant;
+
 const SUPPORTED_PER_CHANNEL_BIT_DEPTH = 8;
 const SUPPORTED_NUMBER_OF_CHANNELS = 4;
 const BYTES_PER_PIXEL = 4;
@@ -53,7 +55,6 @@ const PngColorType = enum(u8) { GRAYSCALE = 0, RGB = 2, PALETTE = 3, GRAYSCALE_A
 const PngCompressionMethod = enum(u8) { DEFLATE = 0 };
 const PngFilterMethod = enum(u8) { ADAPTIVE = 0 };
 const PngInterlaceMethod = enum(u8) { NONE = 0, ADAM7 = 1 };
-
 
 pub const PngSignatureError = error{
     InvalidSignature,
@@ -264,54 +265,68 @@ fn paeth_predictor_function(left_pixel: i32, above_pixel: i32, upper_left_pixel:
 
 const PngReconstructionError = error{ InvalidFilterType, PathologicalImageNotSupported } || AllocatorError || std.meta.IntToEnumError;
 
+// TODO: Optimization
+//      Constraints:
+//          Pixels rely on any of the previous, above or above-left pixels. So we can't parallelize trivially.
+//          However, there are several combinations of (possibly consecutive) filter types that can be parallelized.
+//
+//          - All rows that use NONE can be done in parallel, and will not affect the other rows no matter what.
+//
+//          - All rows that use SUB can be parallelized along their columns.
+//
+//          - rows that uses UP can be parallelized along the row, as long as the previous row is already unfiltered.
+//
+//          - The first 4 bytes (1 pixel) of each row can all be done in parallel if they use NONE or SUB,
+//          and their unfiltered value is just their own value, so it's skipped entirely if we first strip filter type data.
+//
+//          - The first 4 bytes (1 pixel) of each row can be done in parallel if they use UP, AVERAGE or PAETH,
+//          as long as the previous row is already unfiltered.
+
 pub fn unfilter_image(
     filtered_data: []u8,
-    work_buffer: []u8,
-    width: u32,
-    height: u32,
+    pixel_width: u32,
+    pixel_height: u32,
 ) PngReconstructionError!void {
-    const stride = width * BYTES_PER_PIXEL;
+    const image_byte_width = pixel_width * BYTES_PER_PIXEL;
+    const scanline_width = image_byte_width + 1;
 
-    if (work_buffer.len < stride) {
-        return PngReconstructionError.PathologicalImageNotSupported;
-    }
+    for (0..pixel_height) |row_index| {
+        const filter_type: PngFilterType = @enumFromInt(filtered_data[row_index * scanline_width]);
+        const filtered_scanline_start_index = row_index * scanline_width;
+        const unfiltered_scanline_start_index = filtered_scanline_start_index - row_index;
 
-    const prev_scanline = work_buffer[0..stride];
-    @memset(prev_scanline, 0);
+        for (0..image_byte_width) |column_byte_index| {
+            const write_index = unfiltered_scanline_start_index + column_byte_index;
+            const filtered_byte = filtered_data[filtered_scanline_start_index + 1 + column_byte_index];
 
-    var filter_type: PngFilterType = undefined;
-    var write_index: usize = 0;
-    var scanline_start_index: usize = 0;
+            filtered_data[write_index] = @intCast(filter_result: {
+                switch (filter_type) {
+                    .NONE => break :filter_result @as(i32, filtered_byte),
+                    .SUB => {
+                        const left = if (column_byte_index >= BYTES_PER_PIXEL) @as(i32, filtered_data[write_index - BYTES_PER_PIXEL]) else 0;
 
-    for (0..height * (stride + 1), filtered_data) |flat_index, filtered_byte| {
-        const column_index = flat_index % (stride + 1);
+                        break :filter_result @as(i32, filtered_byte) + left;
+                    },
+                    .UP => {
+                        const upper = @as(i32, filtered_data[unfiltered_scanline_start_index - image_byte_width .. unfiltered_scanline_start_index][column_byte_index]);
 
-        if ((flat_index % (stride + 1)) == 0) {
-            filter_type = @enumFromInt(filtered_byte);
-            scanline_start_index = write_index;
-            continue;
-        }
+                        break :filter_result @as(i32, filtered_byte) + upper;
+                    },
+                    .AVERAGE => {
+                        const left = if (column_byte_index >= BYTES_PER_PIXEL) @as(i32, filtered_data[write_index - BYTES_PER_PIXEL]) else 0;
+                        const upper = @as(i32, filtered_data[unfiltered_scanline_start_index - image_byte_width .. unfiltered_scanline_start_index][column_byte_index]);
 
-        // TODO: Make these functions again so they're computed only when needed.
-        const left = if ((column_index - 1) >= BYTES_PER_PIXEL) @as(i32, filtered_data[write_index - BYTES_PER_PIXEL]) else 0;
-        const upper = @as(i32, prev_scanline[column_index - 1]);
-        const upper_left = if ((column_index - 1) >= BYTES_PER_PIXEL) @as(i32, prev_scanline[(column_index - 1) - BYTES_PER_PIXEL]) else 0;
+                        break :filter_result @as(i32, filtered_byte) + @divFloor(left + upper, 2);
+                    },
+                    .PAETH => {
+                        const left = if (column_byte_index >= BYTES_PER_PIXEL) @as(i32, filtered_data[write_index - BYTES_PER_PIXEL]) else 0;
+                        const upper = @as(i32, filtered_data[unfiltered_scanline_start_index - image_byte_width .. unfiltered_scanline_start_index][column_byte_index]);
+                        const upper_left = if ((column_byte_index) >= BYTES_PER_PIXEL) @as(i32, filtered_data[unfiltered_scanline_start_index - image_byte_width .. unfiltered_scanline_start_index][column_byte_index - BYTES_PER_PIXEL]) else 0;
 
-        filtered_data[write_index] = @intCast(switch (filter_type) {
-            .NONE => @as(i32, filtered_byte),
-            .SUB => @as(i32, filtered_byte) + left,
-            .UP => @as(i32, filtered_byte) + upper,
-            .AVERAGE => @as(i32, filtered_byte) + @divFloor(left + upper, 2),
-            .PAETH => @as(i32, filtered_byte) + paeth_predictor_function(left, upper, upper_left),
-        } & 0xFF //
-        );
-
-        write_index += 1;
-
-        // TODO: Can't we ignore this if the next lines' filter type is NONE?
-        if (column_index == stride) {
-            // TODO: Do we even need to copy? Can't we just access the previous scanline directly?
-            @memcpy(prev_scanline, filtered_data[scanline_start_index..write_index]);
+                        break :filter_result @as(i32, filtered_byte) + paeth_predictor_function(left, upper, upper_left);
+                    },
+                }
+            } & 0xFF);
         }
     }
 }
@@ -333,25 +348,40 @@ pub fn decode_png_file(
 ) PngDecodeError!PngImage {
     comptime std.debug.assert(config.compression_factor_lower_bound < 1032);
 
+    const t0 = Instant.now() catch unreachable;
     const png_file = try fs.cwd().openFile(filename, .{});
     defer png_file.close();
 
+    const t1 = Instant.now() catch unreachable;
     const signature = try PngSignature.from_file(png_file);
     try signature.validate(config.optimistic);
 
+    const t2 = Instant.now() catch unreachable;
     const header = try PngHeader.from_file(png_file);
     try header.validate(config.optimistic);
 
-    // Preallocate once.
+    const t3 = Instant.now() catch unreachable;
+
     const decompressed_image_size: usize = ( //
         header.fields.width.native_endian() * header.fields.height.native_endian() * BYTES_PER_PIXEL //
         + header.fields.height.native_endian() // One extra byte per row for the filter type.
     );
-    const upper_bound_compressed_image_size = std.math.divExact(usize, decompressed_image_size, config.compression_factor_lower_bound) catch @divFloor(decompressed_image_size, config.compression_factor_lower_bound) + 1;
-    const work_buffer = try allocator.alignedAlloc(u8, BYTES_PER_PIXEL,  decompressed_image_size + upper_bound_compressed_image_size);
+
+    // This overallocates a bit, but I don't know if we can do better before parsing chunks.
+    const upper_bound_compressed_image_size = ( //
+        (try png_file.metadata()).size() //
+        - @bitSizeOf(PngSignature) / 8 - @bitSizeOf(PngHeader) / 8 //
+        - 3 * @sizeOf(PngChunkType) //
+    );
+
+    const t4 = Instant.now() catch unreachable;
+
+    const work_buffer = try allocator.alignedAlloc(u8, BYTES_PER_PIXEL, decompressed_image_size + upper_bound_compressed_image_size);
 
     var actual_compressed_image_size: usize = 0;
     var previous_data_chunk_index: usize = decompressed_image_size;
+
+    const t5 = Instant.now() catch unreachable;
 
     chunk_read_loop: while (true) {
         var png_chunk: PngChunk = undefined;
@@ -383,19 +413,35 @@ pub fn decode_png_file(
     }
     actual_compressed_image_size = previous_data_chunk_index - decompressed_image_size;
 
+    const t6 = Instant.now() catch unreachable;
+
+    std.debug.print("Diff: {d} bytes\n", .{@as(i64, @intCast(actual_compressed_image_size)) - @as(i64, @intCast(upper_bound_compressed_image_size))});
+
     try decompress_image_data(
         work_buffer[decompressed_image_size .. decompressed_image_size + actual_compressed_image_size],
         work_buffer[0..decompressed_image_size],
     );
 
+    const t7 = Instant.now() catch unreachable;
+
     try unfilter_image(
         work_buffer[0..decompressed_image_size],
-        work_buffer[decompressed_image_size..],
         header.fields.width.native_endian(),
         header.fields.height.native_endian(),
     );
 
-    // std.debug.print("Compression factor: {d}\n", .{@as(f64, @floatFromInt(decompressed_image_size)) / @as(f64, @floatFromInt(actual_compressed_image_size))});
+    const t8 = Instant.now() catch unreachable;
+
+    // TODO: Print stats about which parts of the process takes how long.
+
+    std.debug.print("PNG signature read took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t1.since(t0)))});
+    std.debug.print("PNG header read took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t2.since(t1)))});
+    std.debug.print("PNG header validated took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t3.since(t2)))});
+    std.debug.print("PNG allocate work buffer took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t5.since(t4)))});
+    std.debug.print("PNG read chunks took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t6.since(t5)))});
+    std.debug.print("PNG decompress image data took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t7.since(t6)))});
+    std.debug.print("PNG unfilter image took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t8.since(t7)))});
+    std.debug.print("PNG total decode took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t8.since(t0)))});
 
     if (!allocator.resize(work_buffer, decompressed_image_size)) {
         if (!config.optimistic) {
