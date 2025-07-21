@@ -248,18 +248,18 @@ fn decompress_image_data(
     }
 }
 
-fn paeth_predictor_function(left_pixel: i32, above_pixel: i32, upper_left_pixel: i32) i32 {
-    const predicted_value = left_pixel + above_pixel - upper_left_pixel;
-    const distance_to_left = @abs(predicted_value - left_pixel);
-    const distance_to_above = @abs(predicted_value - above_pixel);
-    const distance_to_upper_left = @abs(predicted_value - upper_left_pixel);
+fn paeth_predictor_function(comptime int_type: type, left_byte: int_type, above_byte: int_type, upper_left_byte: int_type) int_type {
+    const predicted_value = left_byte + above_byte - upper_left_byte;
+    const distance_to_left = @abs(predicted_value - left_byte);
+    const distance_to_above = @abs(predicted_value - above_byte);
+    const distance_to_upper_left = @abs(predicted_value - upper_left_byte);
 
     if (distance_to_left <= distance_to_above and distance_to_left <= distance_to_upper_left) {
-        return left_pixel;
+        return left_byte;
     } else if (distance_to_above <= distance_to_upper_left) {
-        return above_pixel;
+        return above_byte;
     } else {
-        return upper_left_pixel;
+        return upper_left_byte;
     }
 }
 
@@ -283,47 +283,73 @@ const PngReconstructionError = error{ InvalidFilterType, PathologicalImageNotSup
 //          as long as the previous row is already unfiltered.
 
 pub fn unfilter_image(
+    comptime optimistic: bool,
     filtered_data: []u8,
     pixel_width: u32,
     pixel_height: u32,
 ) PngReconstructionError!void {
+    const int_type = i32;
     const image_byte_width = pixel_width * BYTES_PER_PIXEL;
     const scanline_width = image_byte_width + 1;
+
+    if (comptime optimistic) @setRuntimeSafety(false);
+    defer if (comptime optimistic) @setRuntimeSafety(true);
 
     for (0..pixel_height) |row_index| {
         const filter_type: PngFilterType = @enumFromInt(filtered_data[row_index * scanline_width]);
         const filtered_scanline_start_index = row_index * scanline_width;
         const unfiltered_scanline_start_index = filtered_scanline_start_index - row_index;
 
-        for (0..image_byte_width) |column_byte_index| {
+        // Handle the first 4 bytes separately (no left pixel exists).
+        for (0..BYTES_PER_PIXEL) |column_byte_index| {
+            const write_index = unfiltered_scanline_start_index + column_byte_index;
+            const filtered_byte = filtered_data[filtered_scanline_start_index + 1 + column_byte_index];
+
+            // NOTE: left is always 0 for the first 4 bytes.
+            filtered_data[write_index] = @intCast(filter_result: {
+                switch (filter_type) {
+                    .NONE, .SUB => break :filter_result filtered_byte,
+                    .UP => {
+                        const upper = @as(int_type, filtered_data[unfiltered_scanline_start_index - image_byte_width + column_byte_index]);
+                        break :filter_result @as(int_type, filtered_byte) + upper;
+                    },
+                    .AVERAGE => {
+                        const upper =  @as(int_type, filtered_data[unfiltered_scanline_start_index - image_byte_width + column_byte_index]);
+                        break :filter_result @as(int_type, filtered_byte) + @divFloor(upper, 2);
+                    },
+                    .PAETH => {
+                        const upper =  @as(int_type, filtered_data[unfiltered_scanline_start_index - image_byte_width + column_byte_index]);
+                        break :filter_result  @as(int_type, filtered_byte) + paeth_predictor_function(int_type, 0, upper, 0);
+                    },
+                }
+            } & 0xFF);
+        }
+
+        for (BYTES_PER_PIXEL..image_byte_width) |column_byte_index| {
             const write_index = unfiltered_scanline_start_index + column_byte_index;
             const filtered_byte = filtered_data[filtered_scanline_start_index + 1 + column_byte_index];
 
             filtered_data[write_index] = @intCast(filter_result: {
                 switch (filter_type) {
-                    .NONE => break :filter_result @as(i32, filtered_byte),
+                    .NONE => break :filter_result @as(int_type, filtered_byte),
                     .SUB => {
-                        const left = if (column_byte_index >= BYTES_PER_PIXEL) @as(i32, filtered_data[write_index - BYTES_PER_PIXEL]) else 0;
-
-                        break :filter_result @as(i32, filtered_byte) + left;
+                        const left = @as(int_type, filtered_data[write_index - BYTES_PER_PIXEL]);
+                        break :filter_result @as(int_type, filtered_byte) + left;
                     },
                     .UP => {
-                        const upper = @as(i32, filtered_data[unfiltered_scanline_start_index - image_byte_width .. unfiltered_scanline_start_index][column_byte_index]);
-
-                        break :filter_result @as(i32, filtered_byte) + upper;
+                        const upper = @as(int_type, filtered_data[unfiltered_scanline_start_index - image_byte_width + column_byte_index]);
+                        break :filter_result @as(int_type, filtered_byte) + upper;
                     },
                     .AVERAGE => {
-                        const left = if (column_byte_index >= BYTES_PER_PIXEL) @as(i32, filtered_data[write_index - BYTES_PER_PIXEL]) else 0;
-                        const upper = @as(i32, filtered_data[unfiltered_scanline_start_index - image_byte_width .. unfiltered_scanline_start_index][column_byte_index]);
-
-                        break :filter_result @as(i32, filtered_byte) + @divFloor(left + upper, 2);
+                        const left = @as(int_type, filtered_data[write_index - BYTES_PER_PIXEL]);
+                        const upper = @as(int_type, filtered_data[unfiltered_scanline_start_index - image_byte_width + column_byte_index]);
+                        break :filter_result @as(int_type, filtered_byte) + @divFloor(left + upper, 2);
                     },
                     .PAETH => {
-                        const left = if (column_byte_index >= BYTES_PER_PIXEL) @as(i32, filtered_data[write_index - BYTES_PER_PIXEL]) else 0;
-                        const upper = @as(i32, filtered_data[unfiltered_scanline_start_index - image_byte_width .. unfiltered_scanline_start_index][column_byte_index]);
-                        const upper_left = if ((column_byte_index) >= BYTES_PER_PIXEL) @as(i32, filtered_data[unfiltered_scanline_start_index - image_byte_width .. unfiltered_scanline_start_index][column_byte_index - BYTES_PER_PIXEL]) else 0;
-
-                        break :filter_result @as(i32, filtered_byte) + paeth_predictor_function(left, upper, upper_left);
+                        const left = @as(int_type, filtered_data[write_index - BYTES_PER_PIXEL]);
+                        const upper = @as(int_type, filtered_data[unfiltered_scanline_start_index - image_byte_width + column_byte_index]);
+                        const upper_left = @as(int_type, filtered_data[unfiltered_scanline_start_index - image_byte_width + column_byte_index - BYTES_PER_PIXEL]);
+                        break :filter_result @as(int_type, filtered_byte) + paeth_predictor_function(int_type, left, upper, upper_left);
                     },
                 }
             } & 0xFF);
@@ -415,8 +441,6 @@ pub fn decode_png_file(
 
     const t6 = Instant.now() catch unreachable;
 
-    std.debug.print("Diff: {d} bytes\n", .{@as(i64, @intCast(actual_compressed_image_size)) - @as(i64, @intCast(upper_bound_compressed_image_size))});
-
     try decompress_image_data(
         work_buffer[decompressed_image_size .. decompressed_image_size + actual_compressed_image_size],
         work_buffer[0..decompressed_image_size],
@@ -425,6 +449,7 @@ pub fn decode_png_file(
     const t7 = Instant.now() catch unreachable;
 
     try unfilter_image(
+        config.optimistic,
         work_buffer[0..decompressed_image_size],
         header.fields.width.native_endian(),
         header.fields.height.native_endian(),
@@ -434,14 +459,15 @@ pub fn decode_png_file(
 
     // TODO: Print stats about which parts of the process takes how long.
 
-    std.debug.print("PNG signature read took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t1.since(t0)))});
-    std.debug.print("PNG header read took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t2.since(t1)))});
-    std.debug.print("PNG header validated took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t3.since(t2)))});
-    std.debug.print("PNG allocate work buffer took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t5.since(t4)))});
-    std.debug.print("PNG read chunks took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t6.since(t5)))});
-    std.debug.print("PNG decompress image data took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t7.since(t6)))});
-    std.debug.print("PNG unfilter image took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t8.since(t7)))});
-    std.debug.print("PNG total decode took: {d:.3} ms\n", .{10e-6 * @as(f64, @floatFromInt(t8.since(t0)))});
+    std.debug.print("Diff: {d} bytes\n", .{@as(i64, @intCast(actual_compressed_image_size)) - @as(i64, @intCast(upper_bound_compressed_image_size))});
+    std.debug.print("PNG signature read took: {d:.3} ms\n", .{1e-6 * @as(f64, @floatFromInt(t1.since(t0)))});
+    std.debug.print("PNG header read took: {d:.3} ms\n", .{1e-6 * @as(f64, @floatFromInt(t2.since(t1)))});
+    std.debug.print("PNG header validated took: {d:.3} ms\n", .{1e-6 * @as(f64, @floatFromInt(t3.since(t2)))});
+    std.debug.print("PNG allocate work buffer took: {d:.3} ms\n", .{1e-6 * @as(f64, @floatFromInt(t5.since(t4)))});
+    std.debug.print("PNG read chunks took: {d:.3} ms\n", .{1e-6 * @as(f64, @floatFromInt(t6.since(t5)))});
+    std.debug.print("PNG decompress image data took: {d:.3} ms\n", .{1e-6 * @as(f64, @floatFromInt(t7.since(t6)))});
+    std.debug.print("PNG unfilter image took: {d:.3} ms\n", .{1e-6 * @as(f64, @floatFromInt(t8.since(t7)))});
+    std.debug.print("PNG total decode took: {d:.3} ms\n", .{1e-6 * @as(f64, @floatFromInt(t8.since(t0)))});
 
     if (!allocator.resize(work_buffer, decompressed_image_size)) {
         if (!config.optimistic) {
