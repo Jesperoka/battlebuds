@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) !void {
     // std.debug.print("\nstandardTargetOptions: {any}\n", .{default_target.result});
     std.debug.print("\n\n\nresolveTargetQuery: {any}\n", .{target.result});
 
-    const optimize = b.standardOptimizeOption(.{.preferred_optimize_mode = .ReleaseFast });
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
 
     const exe = b.addExecutable(.{
         .name = "battlebuds",
@@ -60,27 +60,22 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    // link libraries
     exe.linkSystemLibrary("hidapi-libusb");
+    // exe.addLibraryPath(std.Build.LazyPath{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
 
-    // const libpng_include_path = std.Build.LazyPath{.cwd_relative = "/usr/include/libpng16" };
-    // exe.addIncludePath(libpng_include_path);
+    const sdk = sdl.init(b, .{}); // Create a new instance of the SDL2 Sdk. Specifiy dependency name explicitly if necessary (use sdl by default).
+    sdk.link(exe, .static, sdl.Library.SDL2); // link SDL2.
+    exe.root_module.addImport("sdl2", sdk.getNativeModule()); // Add "sdl2" package that exposes the SDL2 api (like SDL_Init or SDL_CreateWindow).
 
-    exe.addLibraryPath(std.Build.LazyPath{.cwd_relative = "/usr/lib/x86_64-linux-gnu" });
+    exe.root_module.addImport(
+        "rgbapng",
+        b.dependency("rgbapng", .{
+            .target = target,
+            .optimize = optimize,
+        }).module("rgbapng"),
+    );
 
-    // const libpng_obj_path = std.Build.LazyPath{.cwd_relative = "/usr/lib/x86_64-linux-gnu/libpng16.a" };
-    // exe.addObjectFile(libpng_obj_path);
-
-    // Create a new instance of the SDL2 Sdk. Specifiy dependency name explicitly if necessary (use sdl by default) /
-    const sdk = sdl.init(b, .{});
-
-    // link SDL2
-    sdk.link(exe, .static, sdl.Library.SDL2);
-
-    // Add "sdl2" package that exposes the SDL2 api (like SDL_Init or SDL_CreateWindow)
-    exe.root_module.addImport("sdl2", sdk.getNativeModule());
-
-    // Make building excutable depend on running python script.
+    // Make building excutable depend on running python scripts.
     const generate_visual_assets = b.addSystemCommand(&[_][]const u8{ "python3", "src/visual_assets.py" });
     const generate_audio_assets = b.addSystemCommand(&[_][]const u8{ "python3", "src/audio_assets.py" });
 

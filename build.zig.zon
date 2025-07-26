@@ -3,10 +3,14 @@
 
     .version = "0.0.0",
 
-    .minimum_zig_version = "0.14.0", // This field is optional. This is currently advisory only; Zig does not yet do anything with this value.
+    .minimum_zig_version = "0.14.0",
 
     .dependencies = .{
         .sdl = .{ .path = "SDL.zig" },
+        .rgbapng = .{
+            .url = "git+https://github.com/Jesperoka/zig-rgbapng#c471ba41f6821a4d067115d03cac472bb834cefc",
+            .hash = "12209837a6227c9502eb98c84318d80d984e7138551c333764224698702ff275cacf",
+        },
     },
 
     .paths = .{

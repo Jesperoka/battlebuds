@@ -1,8 +1,8 @@
 /// Using SDL2 for window management and pointers to GPU buffers.
 const std = @import("std");
 const SDL = @import("sdl2");
-const decode_png = @import("decode_png.zig"); // @cImport(@cInclude("png.h"));
-const PngDecodeError = @import("decode_png.zig").PngDecodeError;
+const rgbapng = @import("rgbapng");
+const PngDecodeError = rgbapng.PngDecodeError;
 
 const constants = @import("constants.zig");
 const visual_assets = @import("visual_assets.zig");
@@ -244,7 +244,7 @@ pub const Textures = struct {
         renderer: *SDL.SDL_Renderer,
     ) void {
         var arena = std.heap.ArenaAllocator.init(std.heap.raw_c_allocator);
-        defer arena.deinit(); // TODO: Why does this cause an alignment issue?
+        defer arena.deinit();
 
         inline for (std.meta.fields(visual_assets.ID)) |enum_field| {
             const id: visual_assets.ID = @enumFromInt(enum_field.value);
@@ -290,7 +290,7 @@ fn loadTexture(
     comptime format: c_int,
     comptime access_mode: c_int,
 ) PngDecodeError!void {
-    const image = try decode_png.decode_png_file(
+    const image = try rgbapng.decode(
         .{ .optimistic = true },
         path,
         allocator,
@@ -329,12 +329,12 @@ fn loadTexture(
     SDL.SDL_UnlockTexture(texture.ptr);
 }
 
-fn readPng(path: []const u8, allocator: std.mem.Allocator) PngDecodeError!decode_png.PngImage {
-    return decode_png.decode_png_file(.{ .optimistic = true }, path, allocator);
+fn readPng(path: []const u8, allocator: std.mem.Allocator) PngDecodeError!rgbapng.Image {
+    return rgbapng.decode(.{ .optimistic = true }, path, allocator);
 }
 
 fn copyPixels(
-    image: decode_png.PngImage,
+    image: rgbapng.Image,
     start_addr_dest: usize,
     stride_dest: usize,
 ) void {
