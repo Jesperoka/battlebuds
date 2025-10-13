@@ -21,6 +21,14 @@ pub fn sdlPanic() noreturn {
     @panic(std.mem.sliceTo(str, 0));
 }
 
+pub fn divAsFloat(comptime float_type: type, int_1: anytype, int_2: anytype) float_type {
+    return @as(float_type, @floatFromInt(int_1)) / @as(float_type, @floatFromInt(int_2));
+}
+
+pub fn mulFloatInt(comptime float_type: type, float_value: anytype, int_value: anytype) float_type {
+    return float_value  * @as(float_type, @floatFromInt(int_value));
+}
+
 pub fn range(comptime T: type, comptime n: T, comptime N: T) [N - n]T {
     comptime assert(n < N, "Range must go from low to high.");
     var ints: [N - n]T = undefined;

@@ -10,9 +10,13 @@ pub const HorizontalDirection = enum(i2) {
     LEFT = -1,
     RIGHT = 1,
     NONE = 0,
+
+    pub fn int(self: HorizontalDirection) i32 {
+        return @intFromEnum(self);
+    }
 };
 
-pub const PlaneAxialDirection = enum {
+pub const PlaneAxialDirection = enum(u3) {
     UP,
     DOWN,
     LEFT,

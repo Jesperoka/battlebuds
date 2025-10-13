@@ -114,6 +114,7 @@ pub const Position = struct {
 pub fn Stage(
     comptime id: StageID,
     comptime name: []const u8,
+    comptime thumbnail_asset_id: ID,
     comptime num_background_assets: comptime_int,
     comptime background_asset_ids: [num_background_assets]ID,
     comptime num_foreground_assets: comptime_int,
@@ -125,6 +126,7 @@ pub fn Stage(
     return struct {
         id: StageID = id,
         name: []const u8 = name,
+        thumbnail_asset_id: ID = thumbnail_asset_id,
         background_asset_ids: [num_background_assets]ID = background_asset_ids,
         foreground_asset_ids: [num_foreground_assets]ID = foreground_asset_ids,
         starting_positions: [constants.MAX_NUM_PLAYERS]Position = starting_positions,
@@ -155,7 +157,18 @@ pub const StageID = enum(i16) {
 
         return @enumFromInt(@mod(@intFromEnum(self) + @intFromEnum(x_dir), number_of_stages));
     }
+
+    pub fn int(self: StageID) i16 {
+        return @intFromEnum(self);
+    }
 };
+
+pub fn stageThumbnailID(stage_id: StageID) ID {
+    switch (stage_id) {
+        .Meteor => return meteor.thumbnail_asset_id,
+        .Test00 => return test00.thumbnail_asset_id,
+    }
+}
 
 pub fn stageAssets(stage_id: StageID) StageAssets {
     switch (stage_id) {
@@ -185,6 +198,7 @@ const below_screen = 1080 + 200;
 pub const meteor = Stage(
     .Meteor,
     "Meteor",
+    ID.STAGE_METEOR_THUMBNAIL,
     2,
     .{ ID.STAGE_METEOR_BACKGROUND, ID.STAGE_METEOR_FLOOR },
     1,
@@ -368,6 +382,7 @@ pub const meteor = Stage(
 pub const test00 = Stage(
     .Test00,
     "Test00",
+    ID.STAGE_TEST00_THUMBNAIL,
     2,
     .{ ID.STAGE_TEST00_BACKGROUND, ID.STAGE_TEST00_PLATFORMS },
     0,

@@ -107,6 +107,14 @@ fn character_shooting_state_transition(
     const num_animation_frames: u8 = @intCast(ASSETS_PER_ID[IDFromEntityMode(EntityMode.from_enum_literal(CharacterType, ATTACKING_DIRECTION_ENUM_LITERAL)).int()]);
     const frame_correction: u7 = @intCast(corrected_animation_counter(global_counter, constants.ANIMATION_SLOWDOWN_FACTOR) % num_animation_frames);
 
+    if (frame_correction > corrected_animation_counter(global_counter, constants.ANIMATION_SLOWDOWN_FACTOR)) {
+        print("\n\n{any} {any} {any}\n\n", .{
+            frame_correction,
+            corrected_animation_counter(global_counter, constants.ANIMATION_SLOWDOWN_FACTOR),
+            num_animation_frames,
+        });
+    }
+
     current_character_state.mode = ATTACKING_DIRECTION_ENUM_LITERAL;
     current_character_state.action_dependent_frame_counter = @intFromFloat(@as(float, @floatFromInt(num_animation_frames)) * constants.ANIMATION_SLOWDOWN_FACTOR);
     current_character_state.resources.ammo_count -= 1;

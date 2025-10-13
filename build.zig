@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) !void {
     // std.debug.print("\nstandardTargetOptions: {any}\n", .{default_target.result});
     std.debug.print("\n\n\nresolveTargetQuery: {any}\n", .{target.result});
 
-    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
+    const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .Debug });
 
     const exe = b.addExecutable(.{
         .name = "battlebuds",

@@ -18,6 +18,8 @@ pub const TIMESTEP_NS: u64 = @intFromFloat((1.0 / FRAMERATE) * 1e+9); // 1.667e+
 
 pub const ANIMATION_SLOWDOWN_FACTOR: float = 3.0 * FRAMERATE_TO_BASE_FRAMERATE_RATIO;
 pub const STAGE_SELECT_ANIMATION_TIMESTEP_NS: u64 = (5.0 / BASE_FRAMERATE) * 1e+9;
+pub const STAGE_SWITCH_ANIMATION_TIMESTEP_NS: u64 = (5.0 / BASE_FRAMERATE) * 1e+9;
+pub const STAGE_SWITCH_ANIMATION_NUM_FRAMES: u64 = 3;
 
 pub const DEFAULT_RUN_VELOCITY: float = 5.9;
 pub const DEFAULT_RUN_ACCELERATION: float = 0.0;
@@ -40,6 +42,9 @@ pub const ASPECT_RATIO: float = 16.0 / 9.0;
 pub const STAGE_WIDTH_METERS: float = 20;
 pub const STAGE_HEIGHT_METERS: float = STAGE_WIDTH_METERS / ASPECT_RATIO;
 pub const PIXELS_PER_METER: float = @as(float, @floatFromInt(X_RESOLUTION)) / STAGE_WIDTH_METERS;
+
+pub const STAGE_THUMBNAIL_WIDTH: u16 = 940;
+pub const STAGE_THUMBNAIL_HEIGHT: u16 = 540;
 // -----------------------------------------
 
 //                  Numeric

@@ -88,6 +88,7 @@ pub const Game = struct {
 
         const input_reading_thread = std.Thread.spawn(.{}, input_read_loop, .{ self.input_handler, &quit_game }) catch unreachable;
         defer input_reading_thread.join();
+        var current_stage: stages.StageID = .Meteor;
 
         game_outer_loop: while (true) {
             var counter: u64 = 0;
@@ -95,25 +96,30 @@ pub const Game = struct {
             // self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
 
             // Select stage
-            var current_stage: stages.StageID = .Meteor;
-
             stage_selection_loop: while (true) {
                 self.timer.reset();
                 defer self.wait_for_end_of_frame();
 
-                self.input_handler.update_player_actions_inplace(&self.player_actions);
-
-                // TODO: Play stage switch animation.
-                current_stage = current_stage.switch_stage(self.player_actions[0].x_dir);
-
                 quit_game = handle_sdl_events();
                 if (quit_game) break :game_outer_loop;
 
-                self.renderer.draw_looping_animations(
-                    counter,
-                    &[_]VisualAssetID{VisualAssetID.MENU_WAITING_FORINPUT},
-                    constants.STAGE_SELECT_ANIMATION_TIMESTEP_NS,
-                ) catch unreachable;
+                self.input_handler.update_player_actions_inplace(&self.player_actions);
+
+                const direction = self.player_actions[0].x_dir;
+                const previous_stage = current_stage;
+                current_stage = current_stage.switch_stage(direction);
+
+                if (previous_stage == current_stage) {
+                    self.draw_stage_select_animation(counter, current_stage);
+                } else {
+                    counter += self.play_stage_switch_animation(
+                        direction,
+                        previous_stage,
+                        current_stage,
+                        counter,
+                        constants.STAGE_SWITCH_ANIMATION_TIMESTEP_NS,
+                    );
+                }
 
                 self.renderer.render();
 
@@ -125,6 +131,8 @@ pub const Game = struct {
                 // self.input_handler.read_input() uses self.input_handler.devices array
                 // to determine player ordering, which is set during init, and probably
                 // determined by port position in hardware.
+
+                counter += 1;
             }
 
             counter += self.play_stage_selected_animation(
@@ -165,10 +173,12 @@ pub const Game = struct {
 
                 self.input_handler.update_player_actions_inplace(&self.player_actions);
 
-                if (self.step(counter)) break :match_loop;
+                switch (self.step(counter)) {
+                    .NONE => {},
+                    .PAUSE => self.pause_menu_loop(),
+                    .QUIT_MATCH => break :match_loop,
+                }
 
-                // TODO: Implement pausing. Pause menu should be in a function.
-                // NOTE: Do not use sdl for pause menu, I consider it cheating.
                 quit_game = handle_sdl_events();
                 if (quit_game) break :game_outer_loop;
 
@@ -188,7 +198,81 @@ pub const Game = struct {
         }
     }
 
-    fn play_stage_selected_animation(self: *Game, selected_stage: stages.StageID, global_counter: u64, frame_interval_ns: u64) u64 {
+    fn pause_menu_loop(self: *Game) void {
+        _ = self;
+        // TODO: implement
+    }
+
+    fn draw_stage_select_animation(self: *Game, counter: u64, current_stage: stages.StageID) void {
+        self.renderer.draw_looping_animations_at(
+            counter,
+            &[_]VisualAssetID{stages.stageThumbnailID(current_stage)},
+            &.{constants.X_RESOLUTION / 2 - constants.STAGE_THUMBNAIL_WIDTH / 2},
+            &.{constants.Y_RESOLUTION / 2 - constants.STAGE_THUMBNAIL_HEIGHT / 2},
+            constants.ANIMATION_SLOWDOWN_FACTOR,
+        ) catch unreachable;
+
+        self.renderer.draw_looping_animations(
+            counter,
+            &[_]VisualAssetID{VisualAssetID.MENU_WAITING_FORINPUT},
+            constants.ANIMATION_SLOWDOWN_FACTOR,
+        ) catch unreachable;
+    }
+
+    fn play_stage_switch_animation(
+        self: *Game,
+        direction: HorizontalDirection,
+        from_stage: stages.StageID,
+        to_stage: stages.StageID,
+        global_counter: u64,
+        frame_interval_ns: u64,
+    ) u64 {
+        const x_final_position: i32 = constants.X_RESOLUTION / 2 - constants.STAGE_THUMBNAIL_WIDTH / 2;
+        const y_final_position: i32 = constants.Y_RESOLUTION / 2 - constants.STAGE_THUMBNAIL_HEIGHT / 2;
+
+        for (0..constants.STAGE_SWITCH_ANIMATION_NUM_FRAMES) |local_counter| {
+            self.timer.reset();
+
+            const fraction_complete = utils.divAsFloat(f32, local_counter, constants.STAGE_SWITCH_ANIMATION_NUM_FRAMES);
+
+            self.renderer.draw_looping_animations_at(
+                global_counter + local_counter,
+                &[_]VisualAssetID{stages.stageThumbnailID(from_stage)},
+                &.{x_final_position + @as(i32, @intFromFloat(utils.mulFloatInt(f32, fraction_complete, direction.int() * constants.STAGE_THUMBNAIL_WIDTH)))},
+                &.{y_final_position},
+                constants.ANIMATION_SLOWDOWN_FACTOR,
+            ) catch unreachable;
+
+            self.renderer.draw_looping_animations_at(
+                global_counter + local_counter,
+                &[_]VisualAssetID{stages.stageThumbnailID(to_stage)},
+                &.{x_final_position - direction.int() * constants.STAGE_THUMBNAIL_WIDTH + @as(i32, @intFromFloat(utils.mulFloatInt(f32, fraction_complete, direction.int() * constants.STAGE_THUMBNAIL_WIDTH)))},
+                &.{y_final_position},
+                constants.ANIMATION_SLOWDOWN_FACTOR,
+            ) catch unreachable;
+
+            self.renderer.draw_looping_animations(
+                global_counter + local_counter,
+                &[_]VisualAssetID{VisualAssetID.MENU_WAITING_FORINPUT},
+                constants.ANIMATION_SLOWDOWN_FACTOR,
+            ) catch unreachable;
+
+            self.renderer.render();
+
+            while (self.timer.read() < frame_interval_ns) {
+                // Do nothing.
+            }
+        }
+
+        return constants.STAGE_SWITCH_ANIMATION_NUM_FRAMES;
+    }
+
+    fn play_stage_selected_animation(
+        self: *Game,
+        selected_stage: stages.StageID,
+        global_counter: u64,
+        frame_interval_ns: u64,
+    ) u64 {
         const FRAME_TO_SHOW_STAGE = 7;
         const stage_assets = stages.stageAssets(selected_stage);
         const num_animation_frames = ASSETS_PER_ID[VisualAssetID.MENU_STAGE_SELECTED.int()];
@@ -267,8 +351,20 @@ pub const Game = struct {
         };
     }
 
-    fn step(self: *Game, counter: u64) bool {
+    const MetaAction = enum(u3) {
+        NONE,
+        PAUSE,
+        QUIT_MATCH,
+    };
+
+    fn step(self: *Game, counter: u64) MetaAction {
+        var meta_action = Game.MetaAction.NONE;
+
         for (0..self.num_players) |player| {
+            if (self.player_actions[player].meta_action != .NONE) {
+                meta_action = self.player_actions[player].meta_action;
+            }
+
             const entity_mode, const movement, const counter_correction, const character_created_entity = handle_character_action(
                 &self.player_characters[player],
                 self.dynamic_entities.modes[player],
@@ -403,8 +499,7 @@ pub const Game = struct {
 
         self.renderer.render();
 
-        return false; // Temporary solution until game has win-condition.
-        // return stop;
+        return meta_action;
     }
 
     fn prepare_for_match(self: *Game, stage_id: stages.StageID, entity_modes: [constants.MAX_NUM_PLAYERS]EntityMode) void {
@@ -471,11 +566,17 @@ pub const Game = struct {
     }
 };
 
-pub const PlayerAction = struct {
-    x_dir: HorizontalDirection = .NONE,
+pub const PlayerAction = packed struct {
+    meta_action: Game.MetaAction = .NONE,
     jump: bool = false,
+    x_dir: HorizontalDirection = .NONE,
     attack_dir: PlaneAxialDirection = .NONE,
 };
+
+comptime { // Stay conscious of size of PlayerAction.
+    std.debug.assert(@bitSizeOf(PlayerAction) == 9);
+    std.debug.assert(@sizeOf(PlayerAction) == 2);
+}
 
 // InputHandling is going to be specific to my controllers for now.
 pub const InputHandler = struct {
@@ -505,6 +606,7 @@ pub const InputHandler = struct {
                 .x_dir = if (gamepad_report.x_axis == 0) .LEFT else if (gamepad_report.x_axis == 255) .RIGHT else .NONE,
                 .jump = @bitCast(gamepad_report.R),
                 .attack_dir = if (@bitCast(gamepad_report.Y)) .LEFT else if (@bitCast(gamepad_report.A)) .RIGHT else if (@bitCast(gamepad_report.X)) .UP else if (@bitCast(gamepad_report.B)) .DOWN else .NONE,
+                .meta_action = if (@bitCast(gamepad_report.start) and @bitCast(gamepad_report.select)) .QUIT_MATCH else if (@bitCast(gamepad_report.start)) .PAUSE else .NONE,
             };
         }
     }; // 64 bits

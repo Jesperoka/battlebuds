@@ -59,6 +59,8 @@ pub const DynamicEntities = struct {
         shuffled_indices: [constants.MAX_NUM_PLAYERS]u8,
         entity_modes: [constants.MAX_NUM_PLAYERS]visual_assets.EntityMode,
     ) void {
+        self.* = .{}; // Clear all fields.
+
         for (shuffled_indices, 0..constants.MAX_NUM_PLAYERS) |idx, i| {
             self.X[i] = toPixelX(starting_positions[idx].x);
             self.Y[i] = toPixelY(starting_positions[idx].y);
@@ -125,6 +127,7 @@ pub const Renderer = struct {
         SDL.SDL_Quit();
     }
 
+    // TODO: Fix interger overflow!!!
     pub fn draw_dynamic_entities(
         self: *Renderer,
         counter: usize,
@@ -143,6 +146,12 @@ pub const Renderer = struct {
             if (id == .DONT_LOAD_TEXTURE) continue;
 
             const textures = try Textures.map.lookup(id, false);
+            if (corrected_animation_counter(counter, slowdown_factor) < counter_correction) {
+                std.debug.print("\n\n{any}\n{any}\n\n", .{
+                    counter_correction,
+                    corrected_animation_counter(counter, slowdown_factor),
+                });
+            }
             const animation_counter = corrected_animation_counter(counter, slowdown_factor) - counter_correction;
             const texture = textures[animation_counter % textures.len];
 

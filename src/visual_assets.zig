@@ -70,9 +70,11 @@ pub const ID = enum(u16) {
     UI_HEALTH_EQUALS3,
     UI_HEALTH_EQUALS5,
     STAGE_METEOR_BACKGROUND,
+    STAGE_METEOR_THUMBNAIL,
     STAGE_METEOR_PLATFORMS,
     STAGE_METEOR_FLOOR,
     STAGE_TEST00_BACKGROUND,
+    STAGE_TEST00_THUMBNAIL,
     STAGE_TEST00_PLATFORMS,
     MENU_WAITING_FORINPUT,
     MENU_STAGE_SELECTED,
@@ -153,11 +155,13 @@ pub fn IDFromEntityMode(mode: EntityMode) ID {
         },
         .stage_meteor => |stage_meteor_mode| switch (stage_meteor_mode) {
             .BACKGROUND => return ID.STAGE_METEOR_BACKGROUND,
+            .THUMBNAIL => return ID.STAGE_METEOR_THUMBNAIL,
             .PLATFORMS => return ID.STAGE_METEOR_PLATFORMS,
             .FLOOR => return ID.STAGE_METEOR_FLOOR,
         },
         .stage_test00 => |stage_test00_mode| switch (stage_test00_mode) {
             .BACKGROUND => return ID.STAGE_TEST00_BACKGROUND,
+            .THUMBNAIL => return ID.STAGE_TEST00_THUMBNAIL,
             .PLATFORMS => return ID.STAGE_TEST00_PLATFORMS,
         },
         .menu_waiting => |menu_waiting_mode| switch (menu_waiting_mode) {
@@ -274,12 +278,14 @@ pub const UiHealthMode = enum(u16) {
 
 pub const StageMeteorMode = enum(u16) {
     BACKGROUND,
+    THUMBNAIL,
     PLATFORMS,
     FLOOR,
 };
 
 pub const StageTest00Mode = enum(u16) {
     BACKGROUND,
+    THUMBNAIL,
     PLATFORMS,
 };
 
@@ -291,7 +297,7 @@ pub const MenuStageMode = enum(u16) {
     SELECTED,
 };
 
-pub const ALL: [251]Asset = .{
+pub const ALL: [277]Asset = .{
     .{ .path = "assets/visual/Character/Test/Flying_Right/1.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/2.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/3.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
@@ -526,9 +532,35 @@ pub const ALL: [251]Asset = .{
     .{ .path = "assets/visual/Ui/Health/Equals3/1.png", .id = .UI_HEALTH_EQUALS3 },
     .{ .path = "assets/visual/Ui/Health/Equals5/1.png", .id = .UI_HEALTH_EQUALS5 },
     .{ .path = "assets/visual/Stage/Meteor/Background/1.png", .id = .STAGE_METEOR_BACKGROUND },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/1.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/2.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/3.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/4.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/5.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/6.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/7.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/8.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/9.png", .id = .STAGE_METEOR_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Meteor/Thumbnail/10.png", .id = .STAGE_METEOR_THUMBNAIL },
     .{ .path = "assets/visual/Stage/Meteor/Platforms/1.png", .id = .STAGE_METEOR_PLATFORMS },
     .{ .path = "assets/visual/Stage/Meteor/Floor/1.png", .id = .STAGE_METEOR_FLOOR },
     .{ .path = "assets/visual/Stage/Test00/Background/1.png", .id = .STAGE_TEST00_BACKGROUND },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/1.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/2.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/3.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/4.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/5.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/6.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/7.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/8.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/9.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/10.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/11.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/12.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/13.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/14.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/15.png", .id = .STAGE_TEST00_THUMBNAIL },
+    .{ .path = "assets/visual/Stage/Test00/Thumbnail/16.png", .id = .STAGE_TEST00_THUMBNAIL },
     .{ .path = "assets/visual/Stage/Test00/Platforms/1.png", .id = .STAGE_TEST00_PLATFORMS },
     .{ .path = "assets/visual/Menu/Waiting/ForInput/1.png", .id = .MENU_WAITING_FORINPUT },
     .{ .path = "assets/visual/Menu/Stage/Selected/1.png", .id = .MENU_STAGE_SELECTED },
@@ -545,7 +577,7 @@ pub const ALL: [251]Asset = .{
     .{ .path = "assets/visual/Menu/Stage/Selected/12.png", .id = .MENU_STAGE_SELECTED },
 };
 
-pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 12 };
+pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 10, 1, 1, 1, 16, 1, 1, 12 };
 
 // Storage for textures to be initialized at runtime.
 var character_test_flying_right_textures: [5]Texture = undefined;
@@ -600,9 +632,11 @@ var ui_health_equals13_textures: [1]Texture = undefined;
 var ui_health_equals3_textures: [1]Texture = undefined;
 var ui_health_equals5_textures: [1]Texture = undefined;
 var stage_meteor_background_textures: [1]Texture = undefined;
+var stage_meteor_thumbnail_textures: [10]Texture = undefined;
 var stage_meteor_platforms_textures: [1]Texture = undefined;
 var stage_meteor_floor_textures: [1]Texture = undefined;
 var stage_test00_background_textures: [1]Texture = undefined;
+var stage_test00_thumbnail_textures: [16]Texture = undefined;
 var stage_test00_platforms_textures: [1]Texture = undefined;
 var menu_waiting_forinput_textures: [1]Texture = undefined;
 var menu_stage_selected_textures: [12]Texture = undefined;
@@ -660,9 +694,11 @@ pub var texture_slices: [ID.size()][]Texture = .{
     &ui_health_equals3_textures,
     &ui_health_equals5_textures,
     &stage_meteor_background_textures,
+    &stage_meteor_thumbnail_textures,
     &stage_meteor_platforms_textures,
     &stage_meteor_floor_textures,
     &stage_test00_background_textures,
+    &stage_test00_thumbnail_textures,
     &stage_test00_platforms_textures,
     &menu_waiting_forinput_textures,
     &menu_stage_selected_textures,
