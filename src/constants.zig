@@ -30,6 +30,9 @@ pub const DEFAULT_JUMP_VELOCITY: float = 15.9;
 pub const DEFAULT_DOUBLE_JUMP_VELOCITY: float = DEFAULT_JUMP_VELOCITY;
 pub const DEFAULT_HORIZONTAL_JUMP_VELOCITY: float = DEFAULT_RUN_VELOCITY;
 
+pub const UI_ASSETS_PER_PLAYER: u8 = 2;
+pub const MAX_HEALTH_POINTS: u8 = 15;
+pub const MAX_AMMO_COUNT: u8 = 7;
 // -----------------------------------------
 
 //                  Window

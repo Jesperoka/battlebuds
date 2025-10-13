@@ -69,6 +69,7 @@ pub const ID = enum(u16) {
     UI_HEALTH_EQUALS13,
     UI_HEALTH_EQUALS3,
     UI_HEALTH_EQUALS5,
+    UI_PAUSED_BACKGROUND,
     STAGE_METEOR_BACKGROUND,
     STAGE_METEOR_THUMBNAIL,
     STAGE_METEOR_PLATFORMS,
@@ -153,6 +154,9 @@ pub fn IDFromEntityMode(mode: EntityMode) ID {
             .EQUALS3 => return ID.UI_HEALTH_EQUALS3,
             .EQUALS5 => return ID.UI_HEALTH_EQUALS5,
         },
+        .ui_paused => |ui_paused_mode| switch (ui_paused_mode) {
+            .BACKGROUND => return ID.UI_PAUSED_BACKGROUND,
+        },
         .stage_meteor => |stage_meteor_mode| switch (stage_meteor_mode) {
             .BACKGROUND => return ID.STAGE_METEOR_BACKGROUND,
             .THUMBNAIL => return ID.STAGE_METEOR_THUMBNAIL,
@@ -181,6 +185,7 @@ pub const EntityMode = union(enum(u16)) {
     projectile_test: ProjectileTestMode,
     ui_ammo: UiAmmoMode,
     ui_health: UiHealthMode,
+    ui_paused: UiPausedMode,
     stage_meteor: StageMeteorMode,
     stage_test00: StageTest00Mode,
     menu_waiting: MenuWaitingMode,
@@ -194,6 +199,7 @@ pub const EntityMode = union(enum(u16)) {
             ProjectileTestMode => |Enum| return @unionInit(@This(), "projectile_test", @as(Enum, val)),
             UiAmmoMode => |Enum| return @unionInit(@This(), "ui_ammo", @as(Enum, val)),
             UiHealthMode => |Enum| return @unionInit(@This(), "ui_health", @as(Enum, val)),
+            UiPausedMode => |Enum| return @unionInit(@This(), "ui_paused", @as(Enum, val)),
             StageMeteorMode => |Enum| return @unionInit(@This(), "stage_meteor", @as(Enum, val)),
             StageTest00Mode => |Enum| return @unionInit(@This(), "stage_test00", @as(Enum, val)),
             MenuWaitingMode => |Enum| return @unionInit(@This(), "menu_waiting", @as(Enum, val)),
@@ -276,6 +282,10 @@ pub const UiHealthMode = enum(u16) {
     EQUALS5,
 };
 
+pub const UiPausedMode = enum(u16) {
+    BACKGROUND,
+};
+
 pub const StageMeteorMode = enum(u16) {
     BACKGROUND,
     THUMBNAIL,
@@ -297,7 +307,7 @@ pub const MenuStageMode = enum(u16) {
     SELECTED,
 };
 
-pub const ALL: [277]Asset = .{
+pub const ALL: [291]Asset = .{
     .{ .path = "assets/visual/Character/Test/Flying_Right/1.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/2.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/3.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
@@ -531,6 +541,20 @@ pub const ALL: [277]Asset = .{
     .{ .path = "assets/visual/Ui/Health/Equals13/1.png", .id = .UI_HEALTH_EQUALS13 },
     .{ .path = "assets/visual/Ui/Health/Equals3/1.png", .id = .UI_HEALTH_EQUALS3 },
     .{ .path = "assets/visual/Ui/Health/Equals5/1.png", .id = .UI_HEALTH_EQUALS5 },
+    .{ .path = "assets/visual/Ui/Paused/Background/2.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/3.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/4.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/5.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/6.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/7.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/8.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/9.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/10.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/11.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/12.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/13.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/14.png", .id = .UI_PAUSED_BACKGROUND },
+    .{ .path = "assets/visual/Ui/Paused/Background/15.png", .id = .UI_PAUSED_BACKGROUND },
     .{ .path = "assets/visual/Stage/Meteor/Background/1.png", .id = .STAGE_METEOR_BACKGROUND },
     .{ .path = "assets/visual/Stage/Meteor/Thumbnail/1.png", .id = .STAGE_METEOR_THUMBNAIL },
     .{ .path = "assets/visual/Stage/Meteor/Thumbnail/2.png", .id = .STAGE_METEOR_THUMBNAIL },
@@ -577,7 +601,7 @@ pub const ALL: [277]Asset = .{
     .{ .path = "assets/visual/Menu/Stage/Selected/12.png", .id = .MENU_STAGE_SELECTED },
 };
 
-pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 10, 1, 1, 1, 16, 1, 1, 12 };
+pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 14, 1, 10, 1, 1, 1, 16, 1, 1, 12 };
 
 // Storage for textures to be initialized at runtime.
 var character_test_flying_right_textures: [5]Texture = undefined;
@@ -631,6 +655,7 @@ var ui_health_equals0_textures: [1]Texture = undefined;
 var ui_health_equals13_textures: [1]Texture = undefined;
 var ui_health_equals3_textures: [1]Texture = undefined;
 var ui_health_equals5_textures: [1]Texture = undefined;
+var ui_paused_background_textures: [14]Texture = undefined;
 var stage_meteor_background_textures: [1]Texture = undefined;
 var stage_meteor_thumbnail_textures: [10]Texture = undefined;
 var stage_meteor_platforms_textures: [1]Texture = undefined;
@@ -693,6 +718,7 @@ pub var texture_slices: [ID.size()][]Texture = .{
     &ui_health_equals13_textures,
     &ui_health_equals3_textures,
     &ui_health_equals5_textures,
+    &ui_paused_background_textures,
     &stage_meteor_background_textures,
     &stage_meteor_thumbnail_textures,
     &stage_meteor_platforms_textures,

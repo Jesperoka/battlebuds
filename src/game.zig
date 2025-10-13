@@ -175,7 +175,7 @@ pub const Game = struct {
 
                 switch (self.step(counter)) {
                     .NONE => {},
-                    .PAUSE => self.pause_menu_loop(),
+                    .PAUSE => counter += self.pause_menu_loop(counter),
                     .QUIT_MATCH => break :match_loop,
                 }
 
@@ -198,9 +198,65 @@ pub const Game = struct {
         }
     }
 
-    fn pause_menu_loop(self: *Game) void {
-        _ = self;
-        // TODO: implement
+    fn pause_menu_loop(self: *Game, counter: u64) u64 {
+        var local_counter = counter;
+
+        // TODO: TEMPORARY SOLUTEION, NEED SOME DELAY TO PREVENT INSTANTLY UNPAUSING AGAIN
+        for (0..10) |_| {
+            self.timer.reset();
+            defer self.wait_for_end_of_frame();
+            self.input_handler.update_player_actions_inplace(&self.player_actions);
+
+
+            self.renderer.draw_looping_animations(
+                local_counter,
+                &[_]VisualAssetID{VisualAssetID.UI_PAUSED_BACKGROUND},
+                constants.ANIMATION_SLOWDOWN_FACTOR,
+            ) catch unreachable;
+
+            self.renderer.render();
+
+            local_counter += 1;
+        }
+
+        while (true) {
+            self.timer.reset();
+            defer self.wait_for_end_of_frame();
+
+            self.input_handler.update_player_actions_inplace(&self.player_actions);
+
+            if (self.player_actions[0].meta_action == .PAUSE) {
+                // TODO: TEMPORARY SOLUTEION, NEED SOME DELAY TO PREVENT INSTANTLY PAUSING AGAIN
+                for (0..10) |_| {
+                    self.timer.reset();
+                    defer self.wait_for_end_of_frame();
+                    self.input_handler.update_player_actions_inplace(&self.player_actions);
+
+                    self.renderer.draw_looping_animations(
+                        local_counter,
+                        &[_]VisualAssetID{VisualAssetID.UI_PAUSED_BACKGROUND},
+                        constants.ANIMATION_SLOWDOWN_FACTOR,
+                    ) catch unreachable;
+
+                    self.renderer.render();
+
+                    local_counter += 1;
+                }
+
+                return local_counter;
+            }
+
+            // TODO: implement
+            self.renderer.draw_looping_animations(
+                local_counter,
+                &[_]VisualAssetID{VisualAssetID.UI_PAUSED_BACKGROUND},
+                constants.ANIMATION_SLOWDOWN_FACTOR,
+            ) catch unreachable;
+
+            self.renderer.render();
+
+            local_counter += 1;
+        }
     }
 
     fn draw_stage_select_animation(self: *Game, counter: u64, current_stage: stages.StageID) void {
@@ -237,7 +293,7 @@ pub const Game = struct {
 
             self.renderer.draw_looping_animations_at(
                 global_counter + local_counter,
-                &[_]VisualAssetID{stages.stageThumbnailID(from_stage)},
+                &[_]VisualAssetID{stages.stageThumbnailID(from_stage)}, // TODO: Could be a good idea to have a blurred version of the thumbnail here.
                 &.{x_final_position + @as(i32, @intFromFloat(utils.mulFloatInt(f32, fraction_complete, direction.int() * constants.STAGE_THUMBNAIL_WIDTH)))},
                 &.{y_final_position},
                 constants.ANIMATION_SLOWDOWN_FACTOR,
@@ -245,7 +301,7 @@ pub const Game = struct {
 
             self.renderer.draw_looping_animations_at(
                 global_counter + local_counter,
-                &[_]VisualAssetID{stages.stageThumbnailID(to_stage)},
+                &[_]VisualAssetID{stages.stageThumbnailID(to_stage)}, // TODO: Could be a good iea to have a blurred version of the thumbnail here.
                 &.{x_final_position - direction.int() * constants.STAGE_THUMBNAIL_WIDTH + @as(i32, @intFromFloat(utils.mulFloatInt(f32, fraction_complete, direction.int() * constants.STAGE_THUMBNAIL_WIDTH)))},
                 &.{y_final_position},
                 constants.ANIMATION_SLOWDOWN_FACTOR,
@@ -295,12 +351,11 @@ pub const Game = struct {
         return num_animation_frames;
     }
 
-    // TODO: hardcoded 15 should be constants.MAX_HEALTH_POINTS
-    // TODO: hardcoded 7 should be constants.MAX_AMMO_COUNT
-    // TODO: hardcoded 2 should be constants.UI_ASSETS_PER_PLAYER
     // TODO: move this elsewhere later.
-    fn ui_assets_from_player_states(player_states: [constants.MAX_NUM_PLAYERS]CharacterState) [constants.MAX_NUM_PLAYERS * 2 + constants.MAX_NUM_PLAYERS]VisualAssetID {
-        const UI_HEALTH_ASSET_IDS: [15 + 1]VisualAssetID = comptime .{
+    fn ui_assets_from_player_states(
+        player_states: [constants.MAX_NUM_PLAYERS]CharacterState,
+    ) [constants.MAX_NUM_PLAYERS * constants.UI_ASSETS_PER_PLAYER + constants.MAX_NUM_PLAYERS]VisualAssetID {
+        const UI_HEALTH_ASSET_IDS: [constants.MAX_HEALTH_POINTS + 1]VisualAssetID = comptime .{
             VisualAssetID.UI_HEALTH_EQUALS0,
             VisualAssetID.UI_HEALTH_EQUALS1,
             VisualAssetID.UI_HEALTH_EQUALS2,
@@ -319,7 +374,7 @@ pub const Game = struct {
             VisualAssetID.UI_HEALTH_EQUALS15,
         };
 
-        const UI_AMMO_ASSET_IDS: [7 + 1]VisualAssetID = comptime .{
+        const UI_AMMO_ASSET_IDS: [constants.MAX_AMMO_COUNT + 1]VisualAssetID = comptime .{
             VisualAssetID.UI_AMMO_EQUALS0,
             VisualAssetID.UI_AMMO_EQUALS1,
             VisualAssetID.UI_AMMO_EQUALS2,
@@ -405,7 +460,7 @@ pub const Game = struct {
                     self.dynamic_entities.modes[character_created_entity_index] = character_created_entity.entity_mode;
                     self.dynamic_entities.damage_on_hit[character_created_entity_index] = 1.0;
 
-                    // TODO: Temporary until dynamic entity hitboxed are reworked.
+                    // TODO: Temporary until dynamic entity hitboxes are reworked.
                     self.sim_state.physics_state.W[character_created_entity_index] = 0.15;
                     self.sim_state.physics_state.H[character_created_entity_index] = 0.15;
 
