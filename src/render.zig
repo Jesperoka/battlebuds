@@ -50,7 +50,7 @@ pub const DynamicEntities = struct {
     X: VecI32 = @splat(0),
     Y: VecI32 = @splat(0),
     damage_on_hit: Vec = @splat(0),
-    modes: [NUM]visual_assets.EntityMode = .{.{ .dont_load = visual_assets.DontLoadMode.TEXTURE }} ** NUM,
+    modes: [NUM]visual_assets.EntityMode = .{visual_assets.EntityMode{ .dont_load = visual_assets.DontLoadMode.TEXTURE }} ** NUM,
     counter_corrections: [NUM]u64 = .{0} ** NUM,
 
     pub inline fn init(
@@ -114,6 +114,8 @@ pub const Renderer = struct {
                 }
             }
         }
+
+        std.debug.print("\nRenderer init done.", .{});
 
         return self;
     }
@@ -291,7 +293,7 @@ fn loadTexture(
     comptime access_mode: c_int,
 ) PngDecodeError!void {
     const image = try rgbapng.decode(
-        .{ .optimistic = true },
+        .{ .optimistic = false, .timing = false },
         path,
         allocator,
     );

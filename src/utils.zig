@@ -57,10 +57,10 @@ pub fn StaticMap(comptime len: uint, comptime T_names: type, comptime T_things: 
 
     inline fn eq(a: T_names, b: T_names) bool {
         const typeInfo = @typeInfo(T_names);
-        const Slice = std.builtin.Type.Pointer.Size.Slice;
+        // const Slice = std.builtin.Type.Pointer.Size.slice; // can probaly just be .slice now.
 
         switch (typeInfo) {
-            .Pointer => |ptr| if (ptr.size == Slice) return std.mem.eql(ptr.child, a, b),
+            .pointer => |ptr| if (ptr.size == .slice) return std.mem.eql(ptr.child, a, b),
             else => return a == b,
         }
     }

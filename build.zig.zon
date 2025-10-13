@@ -1,15 +1,17 @@
 .{
-    .name = "battlebuds",
+    .name = .battlebuds,
+
+    .fingerprint = 0x68d16e84aa5312e4,
 
     .version = "0.0.0",
 
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.1",
 
     .dependencies = .{
         .sdl = .{ .path = "SDL.zig" },
         .rgbapng = .{
-            .url = "git+https://github.com/Jesperoka/zig-rgbapng#c471ba41f6821a4d067115d03cac472bb834cefc",
-            .hash = "12209837a6227c9502eb98c84318d80d984e7138551c333764224698702ff275cacf",
+            .url = "git+https://github.com/Jesperoka/zig-rgbapng#866d59cbcbe177db44bb9c93d5b90b79a86187c8",
+            .hash = "rgbapng-1.0.0-smLHYwRVAAAPRvAvKs3XCL360bRU242VoaSmuICVOqVj",
         },
     },
 

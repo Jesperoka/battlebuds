@@ -195,8 +195,8 @@ pub const SimulatorState = struct {
         X_verts_1: []const Vec,
         Y_verts_1: []const Vec,
     ) struct { VecBool, Vec, Vec } {
-        var X_push: Vec = @splat(999999999); // If we use inf, we get NaNs unless we filter.
-        var Y_push: Vec = @splat(999999999); // If we use inf, we get NaNs unless we filter.
+        var X_push: Vec = @splat(999999999.0); // If we use inf, we get NaNs unless we filter.
+        var Y_push: Vec = @splat(999999999.0); // If we use inf, we get NaNs unless we filter.
         var separated = constants.FALSE_VEC;
 
         for (X_orths, Y_orths) |X_orth, Y_orth| {

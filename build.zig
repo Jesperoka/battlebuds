@@ -51,20 +51,48 @@ pub fn build(b: *std.Build) !void {
     // std.debug.print("\nstandardTargetOptions: {any}\n", .{default_target.result});
     std.debug.print("\n\n\nresolveTargetQuery: {any}\n", .{target.result});
 
+    // resolveTargetQuery:
+    // Target{
+    //      .cpu = Target.Cpu{
+    //          .arch = Target.Cpu.Arch.x86_64, .model = Target.Cpu.Model{
+    //              .name = { ... }, .llvm_name = { ... }, .features = Target.Cpu.Feature.Set{ ... }
+    // }, .features = Target.Cpu.Feature.Set{ .ints = { ... } }
+    // }, .os = Target.Os{
+    //          .tag = Target.Os.Tag.linux, .version_range = Target.Os.VersionRange@7ffe636e9008
+    // }, .abi = Target.Abi.gnu, .ofmt = Target.ObjectFormat.elf, .dynamic_linker = Target.DynamicLinker{
+    //      .buffer = {
+    //          47, 108, 105, 98, 54, 52, 47, 108, 100, 45, 108, 105, 110, 117, 120, 45, 120, 56,
+    //          54, 45, 54, 52, 46, 115, 111, 46, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    //          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    //          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    //          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    //          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    //          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    //          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    //          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    //          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+    //      }, .len = 27
+    // }
+    // }
+
     const optimize = b.standardOptimizeOption(.{ .preferred_optimize_mode = .ReleaseFast });
 
     const exe = b.addExecutable(.{
         .name = "battlebuds",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     exe.linkSystemLibrary("hidapi-libusb");
     // exe.addLibraryPath(std.Build.LazyPath{ .cwd_relative = "/usr/lib/x86_64-linux-gnu" });
 
     const sdk = sdl.init(b, .{}); // Create a new instance of the SDL2 Sdk. Specifiy dependency name explicitly if necessary (use sdl by default).
+
     sdk.link(exe, .static, sdl.Library.SDL2); // link SDL2.
+
     exe.root_module.addImport("sdl2", sdk.getNativeModule()); // Add "sdl2" package that exposes the SDL2 api (like SDL_Init or SDL_CreateWindow).
 
     exe.root_module.addImport(
