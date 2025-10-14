@@ -194,7 +194,7 @@ pub const Game = struct {
 
     fn wait_for_end_of_frame(self: *Game) void {
         while (self.timer.read() < constants.TIMESTEP_NS) {
-            // Do nothing.
+            std.atomic.spinLoopHint(); // Do nothing.
         }
     }
 
@@ -206,7 +206,6 @@ pub const Game = struct {
             self.timer.reset();
             defer self.wait_for_end_of_frame();
             self.input_handler.update_player_actions_inplace(&self.player_actions);
-
 
             self.renderer.draw_looping_animations(
                 local_counter,
@@ -672,7 +671,7 @@ pub const InputHandler = struct {
 
     report_data: [max_num_devices][report_num_bytes]u8 = undefined,
     devices: [max_num_devices]*hidapi.hid_device = undefined,
-    reports: [max_num_devices]*UsbGamepadReport = undefined,
+    reports: [max_num_devices]*UsbGamepadReport = undefined, // Points to report_data.
     num_devices: u8 = undefined,
 
     fn init(comptime self: *InputHandler) *InputHandler {
@@ -715,24 +714,41 @@ pub const InputHandler = struct {
         }
     }
 
+    // Called in a dedicated reading thread.
     fn read_input(self: *InputHandler) void {
-        // Don't need mutex, because we care more about performance than correctness. Can use atomics later if needed.
         for (0..self.num_devices) |i| {
+            var single_report_data: [report_num_bytes]u8 = undefined;
+
             utils.assert(hidapi.hid_read_timeout(
                 self.devices[i],
-                &self.report_data[i],
+                &single_report_data,
                 report_num_bytes,
                 report_read_time_ms,
             ) != -1, "hid_read() failed.");
+
+            @atomicStore(
+                UsbGamepadReport,
+                self.reports[i],
+                @bitCast(single_report_data),
+                .unordered,
+            );
         }
     }
 
+    // Called from anywhere.
     fn update_player_actions_inplace(
         self: *InputHandler,
         player_actions: []PlayerAction,
     ) void {
         for (0..self.num_devices) |i| {
-            player_actions[i] = self.reports[i].to_action();
+
+            const report = @atomicLoad(
+                UsbGamepadReport,
+                self.reports[i],
+                .unordered,
+            );
+
+            player_actions[i] = report.to_action();
         }
     }
 };
