@@ -10,11 +10,12 @@ const VecI32 = @import("types.zig").VecI32;
 pub const MAX_NUM_PLAYERS = 4;
 
 const BASE_FRAMERATE: float = 60; // Don't change.
-const FRAMERATE: float = 144;
+pub const FRAMERATE: float = 144;
 pub const FRAMERATE_TO_BASE_FRAMERATE_RATIO: float = FRAMERATE / BASE_FRAMERATE;
 
 pub const TIMESTEP_S: float = 1.0 / FRAMERATE; // 1.0 / 60.0;
 pub const TIMESTEP_NS: u64 = @intFromFloat((1.0 / FRAMERATE) * 1e+9); // 1.667e+7;
+pub const SECONDS_TO_HOLD_TO_QUIT_GAME: float = 1.0;
 
 pub const ANIMATION_SLOWDOWN_FACTOR: float = 3.0 * FRAMERATE_TO_BASE_FRAMERATE_RATIO;
 pub const STAGE_SELECT_ANIMATION_TIMESTEP_NS: u64 = (5.0 / BASE_FRAMERATE) * 1e+9;

@@ -26,7 +26,15 @@ pub fn divAsFloat(comptime float_type: type, int_1: anytype, int_2: anytype) flo
 }
 
 pub fn mulFloatInt(comptime float_type: type, float_value: anytype, int_value: anytype) float_type {
-    return float_value  * @as(float_type, @floatFromInt(int_value));
+    return float_value * @as(float_type, @floatFromInt(int_value));
+}
+
+pub fn not(comptime float_type: type, value: anytype) float_type {
+    if (value > 0.0) {
+        return 1.0;
+    } else {
+        return 0.0;
+    }
 }
 
 pub fn range(comptime T: type, comptime n: T, comptime N: T) [N - n]T {

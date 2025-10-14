@@ -44,6 +44,7 @@ pub const SimulatorState = @import("physics.zig").SimulatorState;
 pub const Game = struct {
     player_characters: [constants.MAX_NUM_PLAYERS]CharacterState = undefined,
     player_actions: [constants.MAX_NUM_PLAYERS]PlayerAction = undefined,
+    player_playing: [constants.MAX_NUM_PLAYERS]bool = undefined,
     input_handler: *InputHandler,
     renderer: *Renderer,
     audio_player: *AudioPlayer,
@@ -78,7 +79,7 @@ pub const Game = struct {
     }
 
     fn input_read_loop(input_handler: *InputHandler, quit_game: *bool) void {
-        while (!quit_game.*) {
+        while (!quit_game.*) { // Doesn't need to be atomic, since it will only ever go from false to true once.
             input_handler.read_input();
         }
     }
@@ -95,15 +96,32 @@ pub const Game = struct {
 
             // self.audio_player.play(AudioAssetID.MENU_MUSIC_TRACK1, 0);
 
-            // Select stage
+            // TODO: Clean this up a bit. Too much branching.
+            // Select stage and characters.
             stage_selection_loop: while (true) {
                 self.timer.reset();
                 defer self.wait_for_end_of_frame();
 
-                quit_game = handle_sdl_events();
-                if (quit_game) break :game_outer_loop;
-
                 self.input_handler.update_player_actions_inplace(&self.player_actions);
+
+                // TODO: How is it possible that we enter this loop and print the exit message,
+                // but at the same time enter a match?
+                if (self.quit_game_hold_loop()) {
+                    quit_game = true;
+                    break :game_outer_loop;
+                }
+
+                if (self.player_actions[0].meta_action == .RECONNECT) {
+                    // TODO: Need to synchronize with input reading thread.
+                    counter += self.play_reconnection_animation(); // NOTE: Should be a very quick animation.
+                    self.input_handler.deinit();
+                    self.input_handler = self.input_handler.init();
+                    self.num_players = self.input_handler.num_devices;
+                    counter += self.play_reconnection_animation(); // TODO: Different animation.
+                    continue;
+                    // TODO: Reset discovered controllers graphics.
+                    // TODO: Reset active players.
+                }
 
                 const direction = self.player_actions[0].x_dir;
                 const previous_stage = current_stage;
@@ -121,16 +139,28 @@ pub const Game = struct {
                     );
                 }
 
+                // TODO: TEMPORARY
+                for (0..self.num_players) |i| {
+                    if (self.player_actions[i].meta_action == .PAUSE) {
+                        self.dynamic_entities.active[i] = utils.not(f32, self.dynamic_entities.active[i]);
+                        self.player_playing[i] = self.dynamic_entities.active[i] > 0.0;
+                    }
+
+                    try self.renderer.draw_looping_animations_at(
+                        counter + 5 * i,
+                        &[_]VisualAssetID{if (self.player_playing[i]) VisualAssetID.UI_PLAYER_PLAYING else VisualAssetID.UI_PLAYER_NOTPLAYING},
+                        &.{@intCast(constants.X_RESOLUTION / (i + 1) -  100)},
+                        &.{@intCast(constants.Y_RESOLUTION - 50)},
+                        constants.ANIMATION_SLOWDOWN_FACTOR
+                    );
+                }
+
+                // TODO: Show discovered controllers graphics.
+                // TODO: Show players playing graphics.
+
                 self.renderer.render();
 
-                if (self.player_actions[0].jump) break :stage_selection_loop;
-
-                // TODO: Allow button press to de- and re-init self.input_handler.
-                // also allow button press on any of the controllers to add it to
-                // self.num_players. Might be complicated a bit by ordering of reports.
-                // self.input_handler.read_input() uses self.input_handler.devices array
-                // to determine player ordering, which is set during init, and probably
-                // determined by port position in hardware.
+                if (self.player_actions[0].jump and (self.player_actions[0].meta_action == .NONE)) break :stage_selection_loop;
 
                 counter += 1;
             }
@@ -141,10 +171,7 @@ pub const Game = struct {
                 constants.STAGE_SELECT_ANIMATION_TIMESTEP_NS,
             );
 
-            // Select Characters
-            // TODO: implement + num_player detection.
-
-            self.num_players = 2;
+            // TODO: Should be able to jump the here to do quick rematch, and play rematch animation (text that says: "Salty??").
 
             // This is the actual character assignments.
             // NOTE: can maybe use EntityMode.from_enum_literal() here to default init mode of all characters.
@@ -177,10 +204,8 @@ pub const Game = struct {
                     .NONE => {},
                     .PAUSE => counter += self.pause_menu_loop(counter),
                     .QUIT_MATCH => break :match_loop,
+                    .RECONNECT => {},
                 }
-
-                quit_game = handle_sdl_events();
-                if (quit_game) break :game_outer_loop;
 
                 counter += 1;
 
@@ -189,6 +214,7 @@ pub const Game = struct {
                 // still play at the correct frame rate, and then I just need to
                 // pass the actual time between frames to the physics functions.
             }
+            counter += self.play_end_match_animation();
         }
     }
 
@@ -198,25 +224,81 @@ pub const Game = struct {
         }
     }
 
-    fn pause_menu_loop(self: *Game, counter: u64) u64 {
-        var local_counter = counter;
+    fn quit_game_hold_loop(self: *Game) bool {
+        var quit_game_delay_counter: u32 = 0;
 
-        // TODO: TEMPORARY SOLUTEION, NEED SOME DELAY TO PREVENT INSTANTLY UNPAUSING AGAIN
-        for (0..10) |_| {
+        while (self.player_actions[0].meta_action == .QUIT_MATCH) {
+            self.timer.reset();
+            defer self.wait_for_end_of_frame();
+
+            self.input_handler.update_player_actions_inplace(&self.player_actions);
+
+            if (quit_game_delay_counter >= constants.SECONDS_TO_HOLD_TO_QUIT_GAME * constants.FRAMERATE) {
+                return true;
+            }
+
+            quit_game_delay_counter += 1;
+        }
+
+        return false;
+    }
+
+    // TODO: Implement. This one should switch between a few different end match animations depending on what happens.
+    fn play_end_match_animation(self: *Game) u64 {
+        const frames: u64 = @intFromFloat(0.1 * constants.FRAMERATE);
+
+        for (0..frames) |_| {
             self.timer.reset();
             defer self.wait_for_end_of_frame();
             self.input_handler.update_player_actions_inplace(&self.player_actions);
-
-            self.renderer.draw_looping_animations(
-                local_counter,
-                &[_]VisualAssetID{VisualAssetID.UI_PAUSED_BACKGROUND},
-                constants.ANIMATION_SLOWDOWN_FACTOR,
-            ) catch unreachable;
-
-            self.renderer.render();
-
-            local_counter += 1;
         }
+
+        return frames;
+    }
+
+    // TODO: Implement
+    fn play_reconnection_animation(self: *Game) u64 {
+        const frames: u64 = @intFromFloat(0.1 * constants.FRAMERATE);
+
+        for (0..frames) |_| {
+            self.timer.reset();
+            defer self.wait_for_end_of_frame();
+            self.input_handler.update_player_actions_inplace(&self.player_actions);
+        }
+
+        return frames;
+    }
+
+    // TODO: Implement
+    fn play_pause_animation(self: *Game) u64 {
+        const frames: u64 = @intFromFloat(1.0 * constants.FRAMERATE);
+
+        for (0..frames) |_| {
+            self.timer.reset();
+            defer self.wait_for_end_of_frame();
+            self.input_handler.update_player_actions_inplace(&self.player_actions);
+        }
+
+        return frames;
+    }
+
+    // TODO: Implement
+    fn play_unpause_animation(self: *Game) u64 {
+        const frames: u64 = @intFromFloat(1.0 * constants.FRAMERATE);
+
+        for (0..frames) |_| {
+            self.timer.reset();
+            defer self.wait_for_end_of_frame();
+            self.input_handler.update_player_actions_inplace(&self.player_actions);
+        }
+
+        return frames;
+    }
+
+    fn pause_menu_loop(self: *Game, counter: u64) u64 {
+        var local_counter = counter;
+
+        local_counter += self.play_pause_animation();
 
         while (true) {
             self.timer.reset();
@@ -225,24 +307,7 @@ pub const Game = struct {
             self.input_handler.update_player_actions_inplace(&self.player_actions);
 
             if (self.player_actions[0].meta_action == .PAUSE) {
-                // TODO: TEMPORARY SOLUTEION, NEED SOME DELAY TO PREVENT INSTANTLY PAUSING AGAIN
-                for (0..10) |_| {
-                    self.timer.reset();
-                    defer self.wait_for_end_of_frame();
-                    self.input_handler.update_player_actions_inplace(&self.player_actions);
-
-                    self.renderer.draw_looping_animations(
-                        local_counter,
-                        &[_]VisualAssetID{VisualAssetID.UI_PAUSED_BACKGROUND},
-                        constants.ANIMATION_SLOWDOWN_FACTOR,
-                    ) catch unreachable;
-
-                    self.renderer.render();
-
-                    local_counter += 1;
-                }
-
-                return local_counter;
+                break;
             }
 
             // TODO: implement
@@ -256,6 +321,10 @@ pub const Game = struct {
 
             local_counter += 1;
         }
+
+        local_counter += self.play_unpause_animation();
+
+        return local_counter;
     }
 
     fn draw_stage_select_animation(self: *Game, counter: u64, current_stage: stages.StageID) void {
@@ -409,6 +478,7 @@ pub const Game = struct {
         NONE,
         PAUSE,
         QUIT_MATCH,
+        RECONNECT,
     };
 
     fn step(self: *Game, counter: u64) MetaAction {
@@ -441,11 +511,13 @@ pub const Game = struct {
 
             inline for (0..7) |local_index| {
                 const player_bullet_begin: usize = constants.MAX_NUM_PLAYERS + player * 7;
+                const character_created_entity_index = player_bullet_begin + local_index;
 
-                if (self.sim_state.floor_collision[player_bullet_begin + local_index]) {
+                if (self.sim_state.floor_collision[character_created_entity_index]) {
                     // TODO: Can set to ground state here, and let persist for a little while/animate disappearance.
-                    self.dynamic_entities.modes[player_bullet_begin + local_index] = EntityMode.from_enum_literal(DontLoadMode, .TEXTURE);
-                    self.dynamic_entities.damage_on_hit[player_bullet_begin + local_index] = 0.0;
+                    self.dynamic_entities.active[character_created_entity_index] = 0.0;
+                    self.dynamic_entities.modes[character_created_entity_index] = EntityMode.from_enum_literal(DontLoadMode, .TEXTURE);
+                    self.dynamic_entities.damage_on_hit[character_created_entity_index] = 0.0;
                 }
             }
 
@@ -455,7 +527,7 @@ pub const Game = struct {
                     // TODO: Update vector to track projectile modes.
 
                     const character_created_entity_index: usize = constants.MAX_NUM_PLAYERS + player * 7 + self.player_characters[player].resources.ammo_count;
-
+                    self.dynamic_entities.active[character_created_entity_index] = 1.0;
                     self.dynamic_entities.modes[character_created_entity_index] = character_created_entity.entity_mode;
                     self.dynamic_entities.damage_on_hit[character_created_entity_index] = 1.0;
 
@@ -490,6 +562,8 @@ pub const Game = struct {
                         too_close_x[local_index] = distance_x < self.sim_state.physics_state.W[player] / 2.0;
                         too_close_y[local_index] = distance_y < self.sim_state.physics_state.H[player] / 2.0;
                         damage_vector[local_index] = self.dynamic_entities.damage_on_hit[other_player_bullet_begin + local_index];
+                        self.dynamic_entities.active[other_player_bullet_begin + local_index] = 0.0;
+                        self.dynamic_entities.modes[other_player_bullet_begin + local_index] = EntityMode.from_enum_literal(DontLoadMode, .TEXTURE);
                         self.dynamic_entities.damage_on_hit[other_player_bullet_begin + local_index] = 0.0;
                     }
                     break :temp .{ @select(bool, too_close_x, too_close_y, too_close_x), damage_vector };
@@ -499,6 +573,7 @@ pub const Game = struct {
                 const damage = @reduce(.Add, @select(f32, too_close, damage_vector, ZERO));
 
                 self.player_characters[player].resources.health_points -|= @intFromFloat(damage);
+                // TODO: Transition to hitstun state.
             }
 
             // TODO: Temporary inline implementation for testing.
@@ -517,6 +592,8 @@ pub const Game = struct {
                         too_close_x[local_index] = distance_x < self.sim_state.physics_state.W[player] / 2.0;
                         too_close_y[local_index] = distance_y < self.sim_state.physics_state.H[player] / 2.0;
                         damage_vector[local_index] = self.dynamic_entities.damage_on_hit[other_player_bullet_begin + local_index];
+                        self.dynamic_entities.active[other_player_bullet_begin + local_index] = 0.0;
+                        self.dynamic_entities.modes[other_player_bullet_begin + local_index] = EntityMode.from_enum_literal(DontLoadMode, .TEXTURE);
                         self.dynamic_entities.damage_on_hit[other_player_bullet_begin + local_index] = 0.0;
                     }
                     break :temp .{ @select(bool, too_close_x, too_close_y, too_close_x), damage_vector };
@@ -526,6 +603,7 @@ pub const Game = struct {
                 const damage = @reduce(.Add, @select(f32, too_close, damage_vector, ZERO));
 
                 self.player_characters[player].resources.health_points -|= @intFromFloat(damage);
+                // TODO: Transition to hitstun state.
             }
         }
 
@@ -533,7 +611,7 @@ pub const Game = struct {
         // TODO: Rename function to indicate that it resolves collisions between dynamic and static entities.
         // It does not resolve collisions between dynamic entities.
         self.sim_state.resolveCollisions(self.stage_assets.geometry);
-        self.sim_state.gamePhysics();
+        self.sim_state.gamePhysics(self.dynamic_entities.active);
 
         self.dynamic_entities.updatePosition(self.sim_state.physics_state.X, self.sim_state.physics_state.Y);
 
@@ -622,13 +700,14 @@ pub const Game = struct {
 
 pub const PlayerAction = packed struct {
     meta_action: Game.MetaAction = .NONE,
+    parry: bool = false,
     jump: bool = false,
     x_dir: HorizontalDirection = .NONE,
     attack_dir: PlaneAxialDirection = .NONE,
 };
 
 comptime { // Stay conscious of size of PlayerAction.
-    std.debug.assert(@bitSizeOf(PlayerAction) == 9);
+    std.debug.assert(@bitSizeOf(PlayerAction) == 10);
     std.debug.assert(@sizeOf(PlayerAction) == 2);
 }
 
@@ -637,10 +716,10 @@ pub const InputHandler = struct {
     const vendor_id: c_ushort = 0x081F;
     const product_id: c_ushort = 0xE401;
     const max_num_devices = 4;
-    const report_read_time_ms = 100;
     const report_num_bytes = 8; // + 1 if numbered report
+    const report_read_time_ms = 100;
 
-    const UsbGamepadReport = packed struct {
+    const UsbGamepadReport = packed struct(u64) {
         x_axis: u8, // left: 0, middle: 127, right: 255
         y_axis: u8, // down: 0, middle: 127, up: 255
         padding0: u28,
@@ -655,12 +734,36 @@ pub const InputHandler = struct {
         start: u1,
         unknown: u10,
 
+        fn to_horizontal_direction(self: UsbGamepadReport) HorizontalDirection {
+            return if (self.x_axis == 0) .LEFT else if (self.x_axis == 255) .RIGHT else .NONE;
+        }
+
+        fn to_attack_direction(self: UsbGamepadReport) PlaneAxialDirection {
+            return ( //
+                if (@bitCast(self.Y)) .UP //
+                else if (@bitCast(self.A)) .RIGHT //
+                else if (@bitCast(self.B)) .DOWN //
+                else if (@bitCast(self.X)) .LEFT //
+                else .NONE //
+            );
+        }
+
+        fn to_meta_action(self: UsbGamepadReport) Game.MetaAction {
+            return ( //
+                if (@bitCast(self.start) and @bitCast(self.select) and @bitCast(self.L) and @bitCast(self.R)) .QUIT_MATCH //
+                else if (@bitCast(self.start) and !(@bitCast(self.select) or @bitCast(self.L) or @bitCast(self.R)))  .PAUSE //
+                else if (@bitCast(self.select) and !(@bitCast(self.start) or @bitCast(self.L) or @bitCast(self.R))) .RECONNECT //
+                else .NONE //
+            );
+        }
+
         fn to_action(gamepad_report: UsbGamepadReport) PlayerAction {
             return PlayerAction{
-                .x_dir = if (gamepad_report.x_axis == 0) .LEFT else if (gamepad_report.x_axis == 255) .RIGHT else .NONE,
+                .x_dir = gamepad_report.to_horizontal_direction(),
+                .parry = @bitCast(gamepad_report.L),
                 .jump = @bitCast(gamepad_report.R),
-                .attack_dir = if (@bitCast(gamepad_report.Y)) .LEFT else if (@bitCast(gamepad_report.A)) .RIGHT else if (@bitCast(gamepad_report.X)) .UP else if (@bitCast(gamepad_report.B)) .DOWN else .NONE,
-                .meta_action = if (@bitCast(gamepad_report.start) and @bitCast(gamepad_report.select)) .QUIT_MATCH else if (@bitCast(gamepad_report.start)) .PAUSE else .NONE,
+                .attack_dir = gamepad_report.to_attack_direction(),
+                .meta_action = gamepad_report.to_meta_action(),
             };
         }
     }; // 64 bits
@@ -674,7 +777,7 @@ pub const InputHandler = struct {
     reports: [max_num_devices]*UsbGamepadReport = undefined, // Points to report_data.
     num_devices: u8 = undefined,
 
-    fn init(comptime self: *InputHandler) *InputHandler {
+    fn init(self: *InputHandler) *InputHandler {
         utils.assert(hidapi.hid_init() == 0, "hid_init() failed.");
 
         const device_info = hidapi.hid_enumerate(vendor_id, product_id);
@@ -683,6 +786,7 @@ pub const InputHandler = struct {
         var current = device_info;
 
         var index_past_latest_discovered_device: usize = 0;
+
         while (current) |dev| {
             if (dev.*.vendor_id == vendor_id and dev.*.product_id == product_id) {
                 self.devices[index_past_latest_discovered_device] = hidapi.hid_open_path(dev.*.path).?;
@@ -690,6 +794,7 @@ pub const InputHandler = struct {
             }
             current = dev.*.next;
         }
+
         self.num_devices = @intCast(index_past_latest_discovered_device);
 
         for (0..self.num_devices) |i| {
@@ -703,10 +808,6 @@ pub const InputHandler = struct {
 
         return self;
     }
-
-    // TODO:    reinit() function that can try to hid_read() new devices.
-    //          If number of devices decreases, close the devices that are no longer in use, and just set the new num_devices.
-    //          If number of devices increases, I need to check if hid_enumerate() returns the same devices in the same order.
 
     fn deinit(self: *InputHandler) void {
         for (0..self.num_devices) |idx| {
@@ -741,7 +842,6 @@ pub const InputHandler = struct {
         player_actions: []PlayerAction,
     ) void {
         for (0..self.num_devices) |i| {
-
             const report = @atomicLoad(
                 UsbGamepadReport,
                 self.reports[i],

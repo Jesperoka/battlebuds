@@ -53,6 +53,8 @@ pub const ID = enum(u16) {
     UI_AMMO_EQUALS0,
     UI_AMMO_EQUALS3,
     UI_AMMO_EQUALS5,
+    UI_PLAYER_NOTPLAYING,
+    UI_PLAYER_PLAYING,
     UI_HEALTH_EQUALS4,
     UI_HEALTH_EQUALS11,
     UI_HEALTH_EQUALS1,
@@ -136,6 +138,10 @@ pub fn IDFromEntityMode(mode: EntityMode) ID {
             .EQUALS3 => return ID.UI_AMMO_EQUALS3,
             .EQUALS5 => return ID.UI_AMMO_EQUALS5,
         },
+        .ui_player => |ui_player_mode| switch (ui_player_mode) {
+            .NOTPLAYING => return ID.UI_PLAYER_NOTPLAYING,
+            .PLAYING => return ID.UI_PLAYER_PLAYING,
+        },
         .ui_health => |ui_health_mode| switch (ui_health_mode) {
             .EQUALS4 => return ID.UI_HEALTH_EQUALS4,
             .EQUALS11 => return ID.UI_HEALTH_EQUALS11,
@@ -184,6 +190,7 @@ pub const EntityMode = union(enum(u16)) {
     dont_load: DontLoadMode,
     projectile_test: ProjectileTestMode,
     ui_ammo: UiAmmoMode,
+    ui_player: UiPlayerMode,
     ui_health: UiHealthMode,
     ui_paused: UiPausedMode,
     stage_meteor: StageMeteorMode,
@@ -198,6 +205,7 @@ pub const EntityMode = union(enum(u16)) {
             DontLoadMode => |Enum| return @unionInit(@This(), "dont_load", @as(Enum, val)),
             ProjectileTestMode => |Enum| return @unionInit(@This(), "projectile_test", @as(Enum, val)),
             UiAmmoMode => |Enum| return @unionInit(@This(), "ui_ammo", @as(Enum, val)),
+            UiPlayerMode => |Enum| return @unionInit(@This(), "ui_player", @as(Enum, val)),
             UiHealthMode => |Enum| return @unionInit(@This(), "ui_health", @as(Enum, val)),
             UiPausedMode => |Enum| return @unionInit(@This(), "ui_paused", @as(Enum, val)),
             StageMeteorMode => |Enum| return @unionInit(@This(), "stage_meteor", @as(Enum, val)),
@@ -263,6 +271,11 @@ pub const UiAmmoMode = enum(u16) {
     EQUALS5,
 };
 
+pub const UiPlayerMode = enum(u16) {
+    NOTPLAYING,
+    PLAYING,
+};
+
 pub const UiHealthMode = enum(u16) {
     EQUALS4,
     EQUALS11,
@@ -307,7 +320,7 @@ pub const MenuStageMode = enum(u16) {
     SELECTED,
 };
 
-pub const ALL: [291]Asset = .{
+pub const ALL: [317]Asset = .{
     .{ .path = "assets/visual/Character/Test/Flying_Right/1.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/2.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/3.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
@@ -525,6 +538,32 @@ pub const ALL: [291]Asset = .{
     .{ .path = "assets/visual/Ui/Ammo/Equals0/1.png", .id = .UI_AMMO_EQUALS0 },
     .{ .path = "assets/visual/Ui/Ammo/Equals3/1.png", .id = .UI_AMMO_EQUALS3 },
     .{ .path = "assets/visual/Ui/Ammo/Equals5/1.png", .id = .UI_AMMO_EQUALS5 },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/1.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/2.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/3.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/4.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/5.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/6.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/7.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/8.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/9.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/10.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/11.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/12.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/NotPlaying/13.png", .id = .UI_PLAYER_NOTPLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/1.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/2.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/3.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/4.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/5.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/6.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/7.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/8.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/9.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/10.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/11.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/12.png", .id = .UI_PLAYER_PLAYING },
+    .{ .path = "assets/visual/Ui/Player/Playing/13.png", .id = .UI_PLAYER_PLAYING },
     .{ .path = "assets/visual/Ui/Health/Equals4/1.png", .id = .UI_HEALTH_EQUALS4 },
     .{ .path = "assets/visual/Ui/Health/Equals11/1.png", .id = .UI_HEALTH_EQUALS11 },
     .{ .path = "assets/visual/Ui/Health/Equals1/1.png", .id = .UI_HEALTH_EQUALS1 },
@@ -601,7 +640,7 @@ pub const ALL: [291]Asset = .{
     .{ .path = "assets/visual/Menu/Stage/Selected/12.png", .id = .MENU_STAGE_SELECTED },
 };
 
-pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 14, 1, 10, 1, 1, 1, 16, 1, 1, 12 };
+pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 13, 13, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 14, 1, 10, 1, 1, 1, 16, 1, 1, 12 };
 
 // Storage for textures to be initialized at runtime.
 var character_test_flying_right_textures: [5]Texture = undefined;
@@ -639,6 +678,8 @@ var ui_ammo_equals6_textures: [1]Texture = undefined;
 var ui_ammo_equals0_textures: [1]Texture = undefined;
 var ui_ammo_equals3_textures: [1]Texture = undefined;
 var ui_ammo_equals5_textures: [1]Texture = undefined;
+var ui_player_notplaying_textures: [13]Texture = undefined;
+var ui_player_playing_textures: [13]Texture = undefined;
 var ui_health_equals4_textures: [1]Texture = undefined;
 var ui_health_equals11_textures: [1]Texture = undefined;
 var ui_health_equals1_textures: [1]Texture = undefined;
@@ -702,6 +743,8 @@ pub var texture_slices: [ID.size()][]Texture = .{
     &ui_ammo_equals0_textures,
     &ui_ammo_equals3_textures,
     &ui_ammo_equals5_textures,
+    &ui_player_notplaying_textures,
+    &ui_player_playing_textures,
     &ui_health_equals4_textures,
     &ui_health_equals11_textures,
     &ui_health_equals1_textures,

@@ -326,7 +326,7 @@ pub const SimulatorState = struct {
         self.floor_collision = vecAnd(colliding, vecAnd(Y_minimal_push > constants.ZERO_VEC, Y_minimal_push >= @abs(X_minimal_push)));
     }
 
-    pub fn gamePhysics(self: *SimulatorState) void {
+    pub fn gamePhysics(self: *SimulatorState, active_entity: Vec) void {
         const gravity: Vec = @splat(-50.81);
         const friction_coeff: Vec = @splat(2.8);
         const drag_coeff: Vec = @splat(0.2);
@@ -366,6 +366,22 @@ pub const SimulatorState = struct {
 
         self.physics_state.ddX = vecFloatFromBool(self.floor_collision) * (-friction_coeff * preserved_dX) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dX * @abs(dX));
         self.physics_state.ddY = vecFloatFromBool(self.floor_collision) * (-@as(Vec, @splat(0.0)) * preserved_dY) + (constants.ONE_VEC - self.colliding) * (-drag_coeff * dY * @abs(dY)) + gravity;
+
+        // Disable physics for inactive entities.
+        for (@constCast(&[_]Vec{
+            self.physics_state.X,
+            self.physics_state.Y,
+            self.physics_state.dX,
+            self.physics_state.dY,
+            self.physics_state.ddX,
+            self.physics_state.ddY,
+            self.colliding,
+            // self.floor_collision,
+            self.X_push,
+            self.Y_push,
+        })) |*physics_vector| {
+            physics_vector.* *= active_entity;
+        }
     }
 
     // I realized a bit late that I don't actually need to simulate differential equations,

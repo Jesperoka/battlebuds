@@ -50,10 +50,11 @@ pub const DynamicEntities = struct {
     X: VecI32 = @splat(0),
     Y: VecI32 = @splat(0),
     damage_on_hit: Vec = @splat(0),
+    active: Vec = @splat(0.0),
     modes: [NUM]visual_assets.EntityMode = .{.{ .dont_load = visual_assets.DontLoadMode.TEXTURE }} ** NUM,
     counter_corrections: [NUM]u64 = .{0} ** NUM,
 
-    pub inline fn init(
+    pub fn init(
         self: *DynamicEntities,
         starting_positions: [constants.MAX_NUM_PLAYERS]stages.Position,
         shuffled_indices: [constants.MAX_NUM_PLAYERS]u8,
