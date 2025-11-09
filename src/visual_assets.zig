@@ -71,6 +71,8 @@ pub const ID = enum(u16) {
     UI_HEALTH_EQUALS13,
     UI_HEALTH_EQUALS3,
     UI_HEALTH_EQUALS5,
+    UI_QUITTING_GAME,
+    UI_LOADING_ASSETS,
     UI_PAUSED_BACKGROUND,
     STAGE_METEOR_BACKGROUND,
     STAGE_METEOR_THUMBNAIL,
@@ -160,6 +162,12 @@ pub fn IDFromEntityMode(mode: EntityMode) ID {
             .EQUALS3 => return ID.UI_HEALTH_EQUALS3,
             .EQUALS5 => return ID.UI_HEALTH_EQUALS5,
         },
+        .ui_quitting => |ui_quitting_mode| switch (ui_quitting_mode) {
+            .GAME => return ID.UI_QUITTING_GAME,
+        },
+        .ui_loading => |ui_loading_mode| switch (ui_loading_mode) {
+            .ASSETS => return ID.UI_LOADING_ASSETS,
+        },
         .ui_paused => |ui_paused_mode| switch (ui_paused_mode) {
             .BACKGROUND => return ID.UI_PAUSED_BACKGROUND,
         },
@@ -192,6 +200,8 @@ pub const EntityMode = union(enum(u16)) {
     ui_ammo: UiAmmoMode,
     ui_player: UiPlayerMode,
     ui_health: UiHealthMode,
+    ui_quitting: UiQuittingMode,
+    ui_loading: UiLoadingMode,
     ui_paused: UiPausedMode,
     stage_meteor: StageMeteorMode,
     stage_test00: StageTest00Mode,
@@ -207,6 +217,8 @@ pub const EntityMode = union(enum(u16)) {
             UiAmmoMode => |Enum| return @unionInit(@This(), "ui_ammo", @as(Enum, val)),
             UiPlayerMode => |Enum| return @unionInit(@This(), "ui_player", @as(Enum, val)),
             UiHealthMode => |Enum| return @unionInit(@This(), "ui_health", @as(Enum, val)),
+            UiQuittingMode => |Enum| return @unionInit(@This(), "ui_quitting", @as(Enum, val)),
+            UiLoadingMode => |Enum| return @unionInit(@This(), "ui_loading", @as(Enum, val)),
             UiPausedMode => |Enum| return @unionInit(@This(), "ui_paused", @as(Enum, val)),
             StageMeteorMode => |Enum| return @unionInit(@This(), "stage_meteor", @as(Enum, val)),
             StageTest00Mode => |Enum| return @unionInit(@This(), "stage_test00", @as(Enum, val)),
@@ -295,6 +307,14 @@ pub const UiHealthMode = enum(u16) {
     EQUALS5,
 };
 
+pub const UiQuittingMode = enum(u16) {
+    GAME,
+};
+
+pub const UiLoadingMode = enum(u16) {
+    ASSETS,
+};
+
 pub const UiPausedMode = enum(u16) {
     BACKGROUND,
 };
@@ -320,7 +340,7 @@ pub const MenuStageMode = enum(u16) {
     SELECTED,
 };
 
-pub const ALL: [317]Asset = .{
+pub const ALL: [358]Asset = .{
     .{ .path = "assets/visual/Character/Test/Flying_Right/1.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/2.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
     .{ .path = "assets/visual/Character/Test/Flying_Right/3.png", .id = .CHARACTER_TEST_FLYING_RIGHT },
@@ -580,6 +600,47 @@ pub const ALL: [317]Asset = .{
     .{ .path = "assets/visual/Ui/Health/Equals13/1.png", .id = .UI_HEALTH_EQUALS13 },
     .{ .path = "assets/visual/Ui/Health/Equals3/1.png", .id = .UI_HEALTH_EQUALS3 },
     .{ .path = "assets/visual/Ui/Health/Equals5/1.png", .id = .UI_HEALTH_EQUALS5 },
+    .{ .path = "assets/visual/Ui/Quitting/Game/1.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/2.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/3.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/4.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/5.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/6.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/7.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/8.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/9.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/10.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/11.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/12.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/13.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/14.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/15.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/16.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/17.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/18.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/19.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/20.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/21.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/22.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/23.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/24.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/25.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/26.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/27.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/28.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/29.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Quitting/Game/30.png", .id = .UI_QUITTING_GAME },
+    .{ .path = "assets/visual/Ui/Loading/Assets/1.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/2.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/3.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/4.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/5.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/6.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/7.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/8.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/9.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/10.png", .id = .UI_LOADING_ASSETS },
+    .{ .path = "assets/visual/Ui/Loading/Assets/11.png", .id = .UI_LOADING_ASSETS },
     .{ .path = "assets/visual/Ui/Paused/Background/2.png", .id = .UI_PAUSED_BACKGROUND },
     .{ .path = "assets/visual/Ui/Paused/Background/3.png", .id = .UI_PAUSED_BACKGROUND },
     .{ .path = "assets/visual/Ui/Paused/Background/4.png", .id = .UI_PAUSED_BACKGROUND },
@@ -640,7 +701,7 @@ pub const ALL: [317]Asset = .{
     .{ .path = "assets/visual/Menu/Stage/Selected/12.png", .id = .MENU_STAGE_SELECTED },
 };
 
-pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 13, 13, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 14, 1, 10, 1, 1, 1, 16, 1, 1, 12 };
+pub const ASSETS_PER_ID: [ID.size()]usize = .{ 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 5, 6, 12, 5, 5, 12, 5, 12, 12, 5, 5, 1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 1, 1, 1, 13, 13, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 30, 11, 14, 1, 10, 1, 1, 1, 16, 1, 1, 12 };
 
 // Storage for textures to be initialized at runtime.
 var character_test_flying_right_textures: [5]Texture = undefined;
@@ -696,6 +757,8 @@ var ui_health_equals0_textures: [1]Texture = undefined;
 var ui_health_equals13_textures: [1]Texture = undefined;
 var ui_health_equals3_textures: [1]Texture = undefined;
 var ui_health_equals5_textures: [1]Texture = undefined;
+var ui_quitting_game_textures: [30]Texture = undefined;
+var ui_loading_assets_textures: [11]Texture = undefined;
 var ui_paused_background_textures: [14]Texture = undefined;
 var stage_meteor_background_textures: [1]Texture = undefined;
 var stage_meteor_thumbnail_textures: [10]Texture = undefined;
@@ -761,6 +824,8 @@ pub var texture_slices: [ID.size()][]Texture = .{
     &ui_health_equals13_textures,
     &ui_health_equals3_textures,
     &ui_health_equals5_textures,
+    &ui_quitting_game_textures,
+    &ui_loading_assets_textures,
     &ui_paused_background_textures,
     &stage_meteor_background_textures,
     &stage_meteor_thumbnail_textures,

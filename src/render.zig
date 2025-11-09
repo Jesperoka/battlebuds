@@ -85,8 +85,7 @@ pub const Renderer = struct {
     num_textures: u8 = undefined,
 
     pub fn init(comptime self: *Renderer) *Renderer {
-        // TODO: Once controller exiting is done, disable SDL_INIT_EVENTS.
-        if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_EVENTS | SDL.SDL_INIT_AUDIO) < 0) {
+        if (SDL.SDL_Init(SDL.SDL_INIT_VIDEO | SDL.SDL_INIT_AUDIO) < 0) {
             utils.sdlPanic();
         }
         self.window = SDL.SDL_CreateWindow(
@@ -104,7 +103,7 @@ pub const Renderer = struct {
             utils.sdlPanic();
         }
 
-        Textures.init(self.renderer);
+        Textures.init(self, self.renderer);
 
         utils.assert(Textures.map.cur_back_idx < Textures.map.cur_front_idx, "Can't loop through texture map if it's not full.");
 
@@ -128,7 +127,7 @@ pub const Renderer = struct {
         SDL.SDL_Quit();
     }
 
-    // TODO: Fix interger overflow!!!
+    // TODO: Fix integer overflow!!!
     pub fn draw_dynamic_entities(
         self: *Renderer,
         counter: usize,
@@ -243,7 +242,38 @@ fn fillWithColor(renderer: *SDL.SDL_Renderer) void {
     }
 }
 
-// TODO: look into whether texture_slices can be const or not.
+fn count_assets_before(comptime id: visual_assets.ID) usize {
+    @setEvalBranchQuota(10000);
+    var count: usize = 0;
+
+    for (visual_assets.ASSETS_PER_ID[0..id.int()]) |num_assets| {
+        count += num_assets;
+    }
+
+    return count;
+}
+
+fn threadsafe_decode_pngs(
+    outputs: []rgbapng.Image,
+    num_assets: usize,
+    index_in_all: usize,
+    threadsafe_arena: *std.heap.ThreadSafeAllocator,
+) void {
+    std.debug.print("\nDecoding PNGs [{d}, {d}]", .{index_in_all, index_in_all + num_assets});
+    for (
+        0..num_assets,
+        visual_assets.ALL[index_in_all .. index_in_all + num_assets],
+    ) |local_index, visual_asset| {
+
+        outputs[local_index] = rgbapng.decode(
+            .{ .optimistic = true },
+            visual_asset.path,
+            threadsafe_arena.allocator(),
+        ) catch unreachable;
+
+    }
+}
+
 pub const Textures = struct {
     const FORMAT: c_int = SDL.SDL_PIXELFORMAT_ABGR8888;
     const ACCESS_MODE: c_int = SDL.SDL_TEXTUREACCESS_STREAMING;
@@ -251,36 +281,137 @@ pub const Textures = struct {
     var map = utils.StaticMap(visual_assets.ID.size(), visual_assets.ID, []visual_assets.Texture);
 
     pub fn init(
-        renderer: *SDL.SDL_Renderer,
+        renderer: *Renderer,
+        sdl_renderer: *SDL.SDL_Renderer,
     ) void {
         var arena = std.heap.ArenaAllocator.init(std.heap.raw_c_allocator);
+        var threadsafe_arena = std.heap.ThreadSafeAllocator{ .child_allocator = arena.allocator() };
         defer arena.deinit();
 
-        inline for (std.meta.fields(visual_assets.ID)) |enum_field| {
-            const id: visual_assets.ID = @enumFromInt(enum_field.value);
-            var count: usize = 0;
+        var assets_loaded: usize = 0;
 
-            std.debug.print("Loading textures for ID: {any}\n", .{id});
+        // First, load 'loading assets' animation.
+        const index_in_all_of_loading_assets: usize = count_assets_before(visual_assets.ID.UI_LOADING_ASSETS);
 
-            // For simplicity, just check all visual assets.
-            for (visual_assets.ALL) |visual_asset| {
-                if (visual_asset.id != id or visual_asset.id == .DONT_LOAD_TEXTURE) continue;
+        for (
+            visual_assets.texture_slices[visual_assets.ID.UI_LOADING_ASSETS.int()],
+            visual_assets.ALL[index_in_all_of_loading_assets .. index_in_all_of_loading_assets + visual_assets.ASSETS_PER_ID[visual_assets.ID.UI_LOADING_ASSETS.int()]],
+        ) |*texture, visual_asset| {
+            utils.assert(
+                visual_asset.id == visual_assets.ID.UI_LOADING_ASSETS,
+                "visual_assets.id != visual_assets.ID.UI_LOADING_ASSETS. This means code generation is not grouping assets, or our index computation is wrong.",
+            );
+
+            const image = rgbapng.decode(
+                .{ .optimistic = true },
+                visual_asset.path,
+                threadsafe_arena.allocator(),
+            ) catch unreachable;
+
+            loadTexture(
+                sdl_renderer,
+                image,
+                texture,
+                FORMAT,
+                ACCESS_MODE,
+            ) catch unreachable;
+
+            assets_loaded += 1;
+        }
+
+        map.insert(visual_assets.ID.UI_LOADING_ASSETS, visual_assets.texture_slices[visual_assets.ID.UI_LOADING_ASSETS.int()], false) catch unreachable;
+
+        renderer.draw_animation_frame_at(
+            utils.map_index_to_index(assets_loaded, visual_assets.ALL.len, visual_assets.ASSETS_PER_ID[visual_assets.ID.UI_LOADING_ASSETS.int()]),
+            visual_assets.ID.UI_LOADING_ASSETS,
+            constants.X_RESOLUTION / 2 - @divFloor(visual_assets.texture_slices[visual_assets.ID.UI_LOADING_ASSETS.int()][0].width, 2),
+            constants.Y_RESOLUTION / 2 - @divFloor(visual_assets.texture_slices[visual_assets.ID.UI_LOADING_ASSETS.int()][0].height, 2),
+        ) catch unreachable;
+
+        renderer.render();
+
+        // Then, load all other assets while displaying loading animation.
+        var images: [visual_assets.ALL.len]rgbapng.Image = undefined; // Just making it the full size for simplicity.
+        var threads: [visual_assets.ID.size() - 2]std.Thread = undefined;
+        var thread_index: usize = 0;
+
+        // Decode PNGs in parallel.
+        inline for (
+            std.meta.fields(visual_assets.ID),
+            visual_assets.ASSETS_PER_ID,
+        ) |enum_field, num_assets| {
+            const id: visual_assets.ID = comptime @enumFromInt(enum_field.value);
+
+            comptime if (id == .DONT_LOAD_TEXTURE or id == .UI_LOADING_ASSETS) {
+                continue;
+            };
+
+            const index_in_all = comptime count_assets_before(id);
+
+            threads[thread_index] = std.Thread.spawn(.{}, threadsafe_decode_pngs, .{
+                images[index_in_all..index_in_all + num_assets],
+                num_assets,
+                index_in_all,
+                &threadsafe_arena,
+            }) catch unreachable;
+
+            thread_index += 1;
+
+        }
+
+        thread_index = 0;
+
+        inline for (
+            std.meta.fields(visual_assets.ID),
+            visual_assets.ASSETS_PER_ID,
+        ) |enum_field, num_assets| {
+            const id: visual_assets.ID = comptime @enumFromInt(enum_field.value);
+
+            comptime if (id == .DONT_LOAD_TEXTURE or id == .UI_LOADING_ASSETS) {
+                continue;
+            };
+
+            threads[thread_index].join();
+            thread_index += 1;
+
+            const index_in_all = comptime count_assets_before(id);
+
+            for (
+                visual_assets.texture_slices[id.int()],
+                visual_assets.ALL[index_in_all .. index_in_all + num_assets],
+                images[index_in_all .. index_in_all + num_assets],
+            ) |*texture, visual_asset, image| {
+                utils.assert(
+                    visual_asset.id == id,
+                    "visual_assets.id != id. This means code generation is not grouping assets, or our index computation is wrong.",
+                );
 
                 loadTexture(
-                    renderer,
-                    arena.allocator(),
-                    &visual_assets.texture_slices[id.int()][count],
-                    visual_asset.path,
+                    sdl_renderer,
+                    image,
+                    texture,
                     FORMAT,
                     ACCESS_MODE,
                 ) catch unreachable;
 
-                count += 1;
-
-                if (count > visual_assets.texture_slices[id.int()].len) break;
+                assets_loaded += 1;
             }
-            map.insert(id, visual_assets.texture_slices[id.int()], false) catch unreachable;
+
+            if (id != .UI_LOADING_ASSETS) {
+                renderer.draw_animation_frame_at(
+                    utils.map_index_to_index(assets_loaded, visual_assets.ALL.len, visual_assets.ASSETS_PER_ID[visual_assets.ID.UI_LOADING_ASSETS.int()]),
+                    visual_assets.ID.UI_LOADING_ASSETS,
+                    constants.X_RESOLUTION / 2 - @divFloor(visual_assets.texture_slices[visual_assets.ID.UI_LOADING_ASSETS.int()][0].width, 2),
+                    constants.Y_RESOLUTION / 2 - @divFloor(visual_assets.texture_slices[visual_assets.ID.UI_LOADING_ASSETS.int()][0].height, 2),
+                ) catch unreachable;
+
+                renderer.render();
+
+                map.insert(id, visual_assets.texture_slices[id.int()], false) catch unreachable;
+            }
         }
+
+        map.insert(visual_assets.ID.DONT_LOAD_TEXTURE, visual_assets.texture_slices[visual_assets.ID.DONT_LOAD_TEXTURE.int()], false) catch unreachable;
     }
 
     pub fn deinit() void {
@@ -294,18 +425,11 @@ pub const Textures = struct {
 
 fn loadTexture(
     renderer: *SDL.SDL_Renderer,
-    allocator: std.mem.Allocator,
+    image: rgbapng.Image,
     texture: *visual_assets.Texture,
-    path: []const u8,
     comptime format: c_int,
     comptime access_mode: c_int,
 ) PngDecodeError!void {
-    const image = try rgbapng.decode(
-        .{ .optimistic = true },
-        path,
-        allocator,
-    );
-
     texture.ptr = SDL.SDL_CreateTexture(
         renderer,
         format,

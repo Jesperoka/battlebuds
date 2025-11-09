@@ -47,6 +47,13 @@ pub fn range(comptime T: type, comptime n: T, comptime N: T) [N - n]T {
     return ints;
 }
 
+pub fn map_index_to_index(from_index: usize, from_len: usize, to_len: usize) usize {
+    const ratio = divAsFloat(f32, from_index, from_len);
+    const to_index: f32 = ratio * @as(f32, @floatFromInt(to_len));
+
+    return @intFromFloat(to_index);
+}
+
 pub const StaticMapError = error{
     MapIsFull,
     MissingItem,

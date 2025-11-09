@@ -44,7 +44,7 @@ pub const SimulatorState = @import("physics.zig").SimulatorState;
 pub const Game = struct {
     player_characters: [constants.MAX_NUM_PLAYERS]CharacterState = undefined,
     player_actions: [constants.MAX_NUM_PLAYERS]PlayerAction = undefined,
-    player_playing: [constants.MAX_NUM_PLAYERS]bool = undefined,
+    player_playing: [constants.MAX_NUM_PLAYERS]bool = .{false} ** constants.MAX_NUM_PLAYERS,
     input_handler: *InputHandler,
     renderer: *Renderer,
     audio_player: *AudioPlayer,
@@ -78,16 +78,28 @@ pub const Game = struct {
         self.renderer.deinit(); // Calls SDL_Quit(), must therefore be called after other structs that use SDL.
     }
 
-    fn input_read_loop(input_handler: *InputHandler, quit_game: *bool) void {
+    fn input_read_loop(input_handler: *InputHandler, quit_game: *bool, reconnecting: *bool, ready_to_reconnect: *bool) void {
         while (!quit_game.*) { // Doesn't need to be atomic, since it will only ever go from false to true once.
-            input_handler.read_input();
+            while (!quit_game.* and !@atomicLoad(bool, reconnecting, .unordered)) {
+                input_handler.read_input();
+            }
+            @atomicStore(bool, ready_to_reconnect, true, .unordered);
+            std.time.sleep(100 * std.time.ns_per_ms);
         }
     }
 
     pub fn run(self: *Game) void {
         var quit_game = false;
+        var reconnecting = false;
+        var ready_to_reconnect = false;
 
-        const input_reading_thread = std.Thread.spawn(.{}, input_read_loop, .{ self.input_handler, &quit_game }) catch unreachable;
+        const input_reading_thread = std.Thread.spawn(.{}, input_read_loop, .{
+            self.input_handler,
+            &quit_game,
+            &reconnecting,
+            &ready_to_reconnect,
+        }) catch unreachable;
+
         defer input_reading_thread.join();
         var current_stage: stages.StageID = .Meteor;
 
@@ -112,12 +124,21 @@ pub const Game = struct {
                 }
 
                 if (self.player_actions[0].meta_action == .RECONNECT) {
-                    // TODO: Need to synchronize with input reading thread.
+                    @atomicStore(bool, &reconnecting, true, .unordered);
+
+                    while (!@atomicLoad(bool, &ready_to_reconnect, .unordered)) {
+                        std.atomic.spinLoopHint(); // Wait for read loop to kick out.
+                    }
+
                     counter += self.play_reconnection_animation(); // NOTE: Should be a very quick animation.
                     self.input_handler.deinit();
                     self.input_handler = self.input_handler.init();
                     self.num_players = self.input_handler.num_devices;
                     counter += self.play_reconnection_animation(); // TODO: Different animation.
+
+                    @atomicStore(bool, &reconnecting, false, .unordered);
+                    @atomicStore(bool, &ready_to_reconnect, false, .unordered);
+
                     continue;
                     // TODO: Reset discovered controllers graphics.
                     // TODO: Reset active players.
@@ -139,20 +160,27 @@ pub const Game = struct {
                     );
                 }
 
+                var active_players_changed = false;
+
                 // TODO: TEMPORARY
                 for (0..self.num_players) |i| {
                     if (self.player_actions[i].meta_action == .PAUSE) {
-                        self.dynamic_entities.active[i] = utils.not(f32, self.dynamic_entities.active[i]);
-                        self.player_playing[i] = self.dynamic_entities.active[i] > 0.0;
+                        self.player_playing[i] = !self.player_playing[i];
+                        self.dynamic_entities.active[i] = if (self.player_playing[i]) 1.0 else 0.0;
+                        active_players_changed = true;
                     }
 
                     try self.renderer.draw_looping_animations_at(
                         counter + 5 * i,
                         &[_]VisualAssetID{if (self.player_playing[i]) VisualAssetID.UI_PLAYER_PLAYING else VisualAssetID.UI_PLAYER_NOTPLAYING},
-                        &.{@intCast(constants.X_RESOLUTION / (i + 1) -  100)},
-                        &.{@intCast(constants.Y_RESOLUTION - 50)},
-                        constants.ANIMATION_SLOWDOWN_FACTOR
+                        &.{@intCast(i * ((constants.X_RESOLUTION - 200) / constants.MAX_NUM_PLAYERS) + 100)},
+                        &.{@intCast(constants.Y_RESOLUTION - 100)},
+                        constants.ANIMATION_SLOWDOWN_FACTOR,
                     );
+                }
+                if (active_players_changed) {
+                    // TODO: Differenct animation.
+                    counter += self.play_reconnection_animation(); // NOTE: Should be a very quick animation.
                 }
 
                 // TODO: Show discovered controllers graphics.
@@ -160,7 +188,7 @@ pub const Game = struct {
 
                 self.renderer.render();
 
-                if (self.player_actions[0].jump and (self.player_actions[0].meta_action == .NONE)) break :stage_selection_loop;
+                if (self.player_actions[0].jump and !self.player_actions[0].parry and (self.player_actions[0].meta_action == .NONE)) break :stage_selection_loop;
 
                 counter += 1;
             }
@@ -175,11 +203,17 @@ pub const Game = struct {
 
             // This is the actual character assignments.
             // NOTE: can maybe use EntityMode.from_enum_literal() here to default init mode of all characters.
-            const entity_modes: [constants.MAX_NUM_PLAYERS]EntityMode = .{
-                .{ .character_test = .STANDING },
-                .{ .character_wurmple = .STANDING },
-                .{ .dont_load = .TEXTURE },
-                .{ .dont_load = .TEXTURE },
+
+            const entity_modes: [constants.MAX_NUM_PLAYERS]EntityMode = assign_entity_modes: {
+                var modes: [constants.MAX_NUM_PLAYERS]EntityMode = .{.{ .dont_load = .TEXTURE }} ** constants.MAX_NUM_PLAYERS;
+
+                for (0..self.num_players) |i| {
+                    if (self.player_playing[i]) {
+                        modes[i] = .{ .character_wurmple = .STANDING };
+                    }
+                }
+
+                break :assign_entity_modes modes;
             };
 
             self.prepare_for_match(current_stage, entity_modes);
@@ -225,7 +259,7 @@ pub const Game = struct {
     }
 
     fn quit_game_hold_loop(self: *Game) bool {
-        var quit_game_delay_counter: u32 = 0;
+        var local_counter: u32 = 0;
 
         while (self.player_actions[0].meta_action == .QUIT_MATCH) {
             self.timer.reset();
@@ -233,11 +267,20 @@ pub const Game = struct {
 
             self.input_handler.update_player_actions_inplace(&self.player_actions);
 
-            if (quit_game_delay_counter >= constants.SECONDS_TO_HOLD_TO_QUIT_GAME * constants.FRAMERATE) {
+            if (local_counter >= constants.SECONDS_TO_HOLD_TO_QUIT_GAME * constants.FRAMERATE) {
                 return true;
             }
 
-            quit_game_delay_counter += 1;
+            // TODO: implement
+            self.renderer.draw_looping_animations(
+                local_counter,
+                &[_]VisualAssetID{VisualAssetID.UI_PAUSED_BACKGROUND},
+                constants.ANIMATION_SLOWDOWN_FACTOR,
+            ) catch unreachable;
+
+            self.renderer.render();
+
+            local_counter += 1;
         }
 
         return false;
@@ -384,7 +427,7 @@ pub const Game = struct {
             self.renderer.render();
 
             while (self.timer.read() < frame_interval_ns) {
-                // Do nothing.
+                std.atomic.spinLoopHint(); // Do nothing.
             }
         }
 
@@ -412,7 +455,7 @@ pub const Game = struct {
             self.renderer.render();
 
             while (self.timer.read() < frame_interval_ns) {
-                // Do nothing.
+                std.atomic.spinLoopHint(); // Do nothing.
             }
         }
 
@@ -487,6 +530,10 @@ pub const Game = struct {
         for (0..self.num_players) |player| {
             if (self.player_actions[player].meta_action != .NONE) {
                 meta_action = self.player_actions[player].meta_action;
+            }
+
+            if (!self.player_playing[player]) {
+                continue;
             }
 
             const entity_mode, const movement, const counter_correction, const character_created_entity = handle_character_action(
@@ -578,6 +625,10 @@ pub const Game = struct {
 
             // TODO: Temporary inline implementation for testing.
             for (player + 1..self.num_players) |other_player| {
+                if (!self.player_playing[other_player]) {
+                    continue;
+                }
+
                 const other_player_bullet_begin: usize = constants.MAX_NUM_PLAYERS + other_player * 7;
 
                 const too_close, const damage_vector = temp: {
@@ -645,22 +696,6 @@ pub const Game = struct {
         self.dynamic_entities.init(starting_positions, shuffled_indices, entity_modes);
         self.sim_state.init(starting_positions, shuffled_indices);
         self.stage_assets = stages.stageAssets(stage_id);
-    }
-
-    // TODO: Remove this once the game is exitable using controller. Also don't enable SDL2 key events.
-    fn handle_sdl_events() bool {
-        var event: SDL_Event = undefined;
-        while (SDL_PollEvent(&event) != 0) {
-            switch (event.type) {
-                SDL_QUIT => return true,
-                SDL_KEYDOWN => {
-                    const keyboard_event: *SDL_KeyboardEvent = @ptrCast(&event);
-                    if (keyboard_event.keysym.sym == SDLK_q) return true;
-                },
-                else => {},
-            }
-        }
-        return false;
     }
 
     fn handle_character_action(
@@ -740,10 +775,10 @@ pub const InputHandler = struct {
 
         fn to_attack_direction(self: UsbGamepadReport) PlaneAxialDirection {
             return ( //
-                if (@bitCast(self.Y)) .UP //
+                if (@bitCast(self.X)) .UP //
                 else if (@bitCast(self.A)) .RIGHT //
                 else if (@bitCast(self.B)) .DOWN //
-                else if (@bitCast(self.X)) .LEFT //
+                else if (@bitCast(self.Y)) .LEFT //
                 else .NONE //
             );
         }
@@ -751,7 +786,7 @@ pub const InputHandler = struct {
         fn to_meta_action(self: UsbGamepadReport) Game.MetaAction {
             return ( //
                 if (@bitCast(self.start) and @bitCast(self.select) and @bitCast(self.L) and @bitCast(self.R)) .QUIT_MATCH //
-                else if (@bitCast(self.start) and !(@bitCast(self.select) or @bitCast(self.L) or @bitCast(self.R)))  .PAUSE //
+                else if (@bitCast(self.start) and !(@bitCast(self.select) or @bitCast(self.L) or @bitCast(self.R))) .PAUSE //
                 else if (@bitCast(self.select) and !(@bitCast(self.start) or @bitCast(self.L) or @bitCast(self.R))) .RECONNECT //
                 else .NONE //
             );
@@ -813,6 +848,7 @@ pub const InputHandler = struct {
         for (0..self.num_devices) |idx| {
             hidapi.hid_close(self.devices[idx]);
         }
+        _ = hidapi.hid_exit();
     }
 
     // Called in a dedicated reading thread.
